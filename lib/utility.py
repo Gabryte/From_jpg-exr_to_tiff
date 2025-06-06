@@ -6,7 +6,7 @@ import Imath
 from PIL import Image
 
 
-# --- 4. Normalization Helpers ---
+# --- Normalization Helpers ---
 def normalize_channel(channel_data, min_val=None, max_val=None, target_range=(0, 1)):
         """Normalizes a single channel to a target range."""
         if channel_data.size == 0 or (np.all(channel_data == 0) and (min_val is None or max_val is None)):
@@ -62,7 +62,7 @@ def load_exr_depth(exr_path):
     except Exception as e:
         print(f"Failed to load EXR {exr_path}: {e}")
         return None
-
+#FOR GLOBAL DATASET MAX AND MIN
 def calculate_global_min_max(rgb_files,DEPTH_FRAMES_DIR):
   global_min_depth, global_max_depth = float('inf'), float('-inf')
   for i, rgb_filename in enumerate(rgb_files):

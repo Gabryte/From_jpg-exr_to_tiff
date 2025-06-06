@@ -29,7 +29,7 @@ if __name__ == '__main__':
     # List all RGB frames (assuming they are named sequentially, e.g., 00000.png)
     rgb_files = sorted([f for f in os.listdir(RGB_FRAMES_DIR) if f.endswith(('.png', '.jpg'))])
 
-    global_min_depth, global_max_depth = calculate_global_min_max()
+    global_min_depth, global_max_depth = calculate_global_min_max(rgb_files, DEPTH_FRAMES_DIR)
 
     print("Calculating global min/max depth and height for consistent normalization...")
     for i, rgb_filename in enumerate(rgb_files):
