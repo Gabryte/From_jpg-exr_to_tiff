@@ -5,7 +5,7 @@ import shutil
 from PIL import Image # For saving multi-channel TIFF
 
 
-from lib.utility import load_exr_depth, calculate_global_min_max, normalize_channel
+from lib.utility import load_exr_depth, calculate_global_min_max, normalize_channel, calculate_min_depth_with_fixed_max
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
@@ -23,13 +23,20 @@ if __name__ == '__main__':
     OUTPUT_IMAGES_DIR = os.path.join(OUTPUT_DATASET_ROOT, 'images')
     OUTPUT_LABELS_DIR = os.path.join(OUTPUT_DATASET_ROOT, 'labels')
 
+    LAIDAR_MAX_DEPTH = 7
+
     os.makedirs(OUTPUT_IMAGES_DIR, exist_ok=True)
     os.makedirs(OUTPUT_LABELS_DIR, exist_ok=True)
 
     # List all RGB frames (assuming they are named sequentially, e.g., 00000.png)
     rgb_files = sorted([f for f in os.listdir(RGB_FRAMES_DIR) if f.endswith(('.png', '.jpg'))])
 
+    #Calculate max and min depth values measured on the entire dataset
+
     global_min_depth, global_max_depth = calculate_global_min_max(rgb_files, DEPTH_FRAMES_DIR)
+
+    #Calculate global min based on a fixed max laidar distance value
+    #global_min_depth, global_max_depth = calculate_min_depth_with_fixed_max(rgb_files, DEPTH_FRAMES_DIR, LAIDAR_MAX_DEPTH)
 
     print("Calculating global min/max depth and height for consistent normalization...")
     for i, rgb_filename in enumerate(rgb_files):
