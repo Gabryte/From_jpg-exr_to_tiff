@@ -119,7 +119,7 @@ def fuse():
 
 
 def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_output_dir):
-    "array_of_jpg_and_exr_dirs is expected to be a directory which contains two subdirectories rgb for jpg images and exr for exr images"
+    "array_of_jpg_and_exr_dirs is expected to be an array of directories each of which contains two subdirectories rgb for jpg images and depth for exr images"
 
     jpg_dataset_hashes = {}
     jpg_no_dataset_hashes = {}
@@ -141,7 +141,7 @@ def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_ou
         single_no_dataset_jpg_dir = os.path.join(father_dir, "rgb")
         for filename in os.listdir(single_no_dataset_jpg_dir):
             if filename.lower().endswith((".jpg", ".jpeg")):
-                single_exr_dir = os.path.join(father_dir, "exr")
+                single_exr_dir = os.path.join(father_dir, "depth")
                 exr_file_path = os.path.join(single_exr_dir, filename)
                 no_dataset_jpg_file_path = os.path.join(single_no_dataset_jpg_dir, filename)
 
