@@ -78,16 +78,35 @@ def get_input_directories():
    directories_path = os.path.join(home,"Desktop","Video RGB+D Florence","Annotated")
    subfolders = [f.path for f in os.scandir(directories_path) if f.is_dir()]
    for i,folder in enumerate(subfolders):
-       subfolders[i] = os.path.join(folder,"EXR_RGBD","depth")
+       subfolders[i] = os.path.join(folder,"EXR_RGBD")
    return subfolders
 
 
-def copy_and_rename(src_path, dest_path, new_name):
-    # Copy the file
-    shutil.copy2(src_path, dest_path)
+def copy_and_rename_file(source_directory, destination_directory, original_filename, new_filename):
+    """
+    Copies a file from a source directory to a destination directory and renames it.
 
-    # Rename the copied file
-    new_path = f"{dest_path}/{new_name}"
-    shutil.move(f"{dest_path}/{src_path}", new_path)
+    Args:
+        source_directory (str): The path to the directory where the original file is located.
+        destination_directory (str): The path to the directory where the file will be copied.
+        original_filename (str): The original name of the file (including extension).
+        new_filename (str): The new name for the copied file (including extension).
+    """
+    source_path = os.path.join(source_directory, original_filename)
+    destination_path = os.path.join(destination_directory, new_filename)
+
+    # Ensure the source file exists
+    if not os.path.exists(source_path):
+        print(f"Error: Source file '{source_path}' does not exist.")
+        return
+
+    # Create the destination directory if it doesn't exist
+    os.makedirs(destination_directory, exist_ok=True)
+
+    try:
+        shutil.copy2(source_path, destination_path)
+        print(f"Successfully copied '{original_filename}' from '{source_directory}' to '{destination_directory}' as '{new_filename}'.")
+    except Exception as e:
+        print(f"An error occurred while copying the file: {e}")
 
 

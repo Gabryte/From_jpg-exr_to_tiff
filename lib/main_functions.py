@@ -3,7 +3,7 @@ import numpy as np
 import os
 import shutil
 from PIL import Image # For saving multi-channel TIFF
-from lib.utility import load_exr_depth, normalize_channel, generate_file_hash, copy_and_rename
+from lib.utility import load_exr_depth, normalize_channel, generate_file_hash, copy_and_rename_file
 from lib.global_dataset_utility import calculate_global_min_max
 
 def fuse():
@@ -126,7 +126,7 @@ def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_ou
 
     print(f"Scanning dataset dir: {dataset_jpg_dir}...")
     for filename in os.listdir(dataset_jpg_dir):
-        if filename.lower().endswith((".jpg", ".jpeg")):
+        if filename.lower().endswith((".jpg", ".jpeg")) and not filename.startswith("."):
             file_path = os.path.join(dataset_jpg_dir, filename)
 
             if os.path.isfile(file_path):
@@ -140,9 +140,10 @@ def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_ou
         print(f"Scanning no dataset dir: {father_dir}...")
         single_no_dataset_jpg_dir = os.path.join(father_dir, "rgb")
         for filename in os.listdir(single_no_dataset_jpg_dir):
-            if filename.lower().endswith((".jpg", ".jpeg")):
+            if filename.lower().endswith((".jpg", ".jpeg")) and not filename.startswith("."):
                 single_exr_dir = os.path.join(father_dir, "depth")
-                exr_file_path = os.path.join(single_exr_dir, filename)
+                file_name_without_ext = os.path.splitext(filename)[0]
+                exr_file_path = os.path.join(single_exr_dir, file_name_without_ext + ".exr")
                 no_dataset_jpg_file_path = os.path.join(single_no_dataset_jpg_dir, filename)
 
                 if os.path.isfile(no_dataset_jpg_file_path) and os.path.isfile(exr_file_path):
@@ -155,17 +156,29 @@ def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_ou
     for hash_val, dataset_jpg_path in jpg_dataset_hashes.items():
         if hash_val in jpg_no_dataset_hashes:
             # We found a match! XD
+            print(f"Match found between {hash_val} and {dataset_jpg_path}")
             os.makedirs(exr_output_dir, exist_ok=True)
             new_name = os.path.basename(dataset_jpg_path)
 
+            new_true_base_name = os.path.splitext(new_name)[0]
+            new_true_name = new_true_base_name + ".exr"
+
+
             #destination_filepath = os.path.join(exr_output_dir,new_name)
             exr_source_filepath = jpg_no_dataset_hashes[hash_val]
-            try:
-                copy_and_rename(exr_source_filepath, exr_output_dir, new_name)
-            except FileNotFoundError:
-                print(f"Error: Source file not found at '{exr_source_filepath}'")
-            except Exception as e:
-                print(f"An error occurred during copying: {e}")
+            old_name = os.path.basename(exr_source_filepath)
+            exr_source_path = os.path.dirname(exr_source_filepath)
+            if os.path.isfile(exr_source_filepath):
+                print("Copying exr file...")
+                try:
+                    copy_and_rename_file(exr_source_path, exr_output_dir,old_name,new_true_name)
+                except FileNotFoundError:
+                    print(f"Error: Source file not found at '{exr_source_filepath}'")
+                except Exception as e:
+                    print(f"An error occurred during copying: {e}")
+            else:
+                print(f"Copy Failed: Source exr file not found at '{exr_source_filepath}'")
+
 
 
 
