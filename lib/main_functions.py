@@ -3,7 +3,7 @@ import numpy as np
 import os
 import shutil
 from PIL import Image # For saving multi-channel TIFF
-from lib.utility import load_exr_depth, normalize_channel, generate_file_hash
+from lib.utility import load_exr_depth, normalize_channel, generate_file_hash, copy_and_rename
 from lib.global_dataset_utility import calculate_global_min_max
 
 def fuse():
@@ -119,7 +119,7 @@ def fuse():
 
 
 def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_output_dir):
-    "array_of_jpg_and_exr_dirs is expected to be an array of directories each of which contains two subdirectories rgb for jpg images and depth for exr images"
+    """array_of_jpg_and_exr_dirs is expected to be an array of directories each of which contains two subdirectories rgb for jpg images and depth for exr images"""
 
     jpg_dataset_hashes = {}
     jpg_no_dataset_hashes = {}
@@ -157,10 +157,11 @@ def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_ou
             # We found a match! XD
             os.makedirs(exr_output_dir, exist_ok=True)
             new_name = os.path.basename(dataset_jpg_path)
-            destination_filepath = os.path.join(exr_output_dir,new_name)
+
+            #destination_filepath = os.path.join(exr_output_dir,new_name)
+            exr_source_filepath = jpg_no_dataset_hashes[hash_val]
             try:
-                exr_source_filepath = jpg_no_dataset_hashes[hash_val]
-                shutil.copy2(exr_source_filepath, destination_filepath)
+                copy_and_rename(exr_source_filepath, exr_output_dir, new_name)
             except FileNotFoundError:
                 print(f"Error: Source file not found at '{exr_source_filepath}'")
             except Exception as e:

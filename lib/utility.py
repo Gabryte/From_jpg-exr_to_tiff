@@ -1,8 +1,10 @@
+import shutil
 
 import OpenEXR
 import Imath
 import numpy as np
 import hashlib
+import os
 
 # --- Normalization Helpers ---
 def normalize_channel(channel_data, min_val=None, max_val=None, target_range=(0, 1)):
@@ -69,3 +71,23 @@ def generate_file_hash(filepath, hash_algorithm='md5'):
                 break
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def get_input_directories():
+   home = os.path.expanduser("~")
+   directories_path = os.path.join(home,"Desktop","Video RGB+D Florence","Annotated")
+   subfolders = [f.path for f in os.scandir(directories_path) if f.is_dir()]
+   for i,folder in enumerate(subfolders):
+       subfolders[i] = os.path.join(folder,"EXR_RGBD","depth")
+   return subfolders
+
+
+def copy_and_rename(src_path, dest_path, new_name):
+    # Copy the file
+    shutil.copy2(src_path, dest_path)
+
+    # Rename the copied file
+    new_path = f"{dest_path}/{new_name}"
+    shutil.move(f"{dest_path}/{src_path}", new_path)
+
+
