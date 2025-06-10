@@ -1,31 +1,31 @@
 import cv2
 import numpy as np
 import os
-import shutil
+import tifffile
 from PIL import Image # For saving multi-channel TIFF
 from lib.utility import load_exr_depth, normalize_channel, generate_file_hash, copy_and_rename_file
 from lib.global_dataset_utility import calculate_global_min_max
 
-def fuse():
+def fuse(RGB_FRAMES_DIR, DEPTH_FRAMES_DIR, OUTPUT_TIFF_DIR):
     # Directories
-    home_dir = os.path.expanduser("~")
-    downloads_dir = os.path.join(home_dir, "Downloads")
+    #home_dir = os.path.expanduser("~")
+    #downloads_dir = os.path.join(home_dir, "Downloads")
 
     # Input dataset
-    RGB_FRAMES_DIR = downloads_dir + '/Frames'
-    DEPTH_FRAMES_DIR = downloads_dir + "/Depth"
-    ORIGINAL_LABELS_DIR = downloads_dir + '/Labels'
+    #RGB_FRAMES_DIR = downloads_dir + '/Frames'
+    #DEPTH_FRAMES_DIR = downloads_dir + "/Depth"
+    #ORIGINAL_LABELS_DIR = downloads_dir + '/Labels'
 
     # Output directories for the new multispectral dataset
-    OUTPUT_DATASET_ROOT = downloads_dir + '/Dataset'
-    OUTPUT_IMAGES_DIR = os.path.join(OUTPUT_DATASET_ROOT, 'images')
-    OUTPUT_LABELS_DIR = os.path.join(OUTPUT_DATASET_ROOT, 'labels')
+    #OUTPUT_DATASET_ROOT = downloads_dir + '/Dataset'
+    #OUTPUT_IMAGES_DIR = os.path.join(OUTPUT_DATASET_ROOT, 'images')
+    #OUTPUT_LABELS_DIR = os.path.join(OUTPUT_DATASET_ROOT, 'labels')
 
-    os.makedirs(OUTPUT_IMAGES_DIR, exist_ok=True)
-    os.makedirs(OUTPUT_LABELS_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_TIFF_DIR, exist_ok=True)
 
-    # List all RGB frames (assuming they are named sequentially, e.g., 00000.png)
-    rgb_files = sorted([f for f in os.listdir(RGB_FRAMES_DIR) if f.endswith(('.png', '.jpg'))])
+
+    # List all RGB frames (assuming they are named sequentially, e.g., 00000.jpg)
+    rgb_files = sorted([f for f in os.listdir(RGB_FRAMES_DIR) if f.endswith(('.jpeg', '.jpg'))])
 
     # Calculate max and min depth values measured on the entire dataset
     print("Calculating global min/max depth for consistent normalization...")
@@ -35,18 +35,18 @@ def fuse():
     # global_min_depth, global_max_depth = calculate_min_depth_with_fixed_max(rgb_files, DEPTH_FRAMES_DIR, LAIDAR_MAX_DEPTH)
 
     # --- Main Processing Loop ---
-    print("\nProcessing frames and generating multi-channel TIFFs...")
+    print("\nProcessing frames and generating multi-channel TIFFs in CHW format...")
     for i, rgb_filename in enumerate(rgb_files):
         base_filename = os.path.splitext(rgb_filename)[0]
         depth_filename = f"{base_filename}.exr"
-        label_filename = f"{base_filename}.txt"  # Assuming label file has same base name
+
 
         rgb_path = os.path.join(RGB_FRAMES_DIR, rgb_filename)
         depth_path = os.path.join(DEPTH_FRAMES_DIR, depth_filename)
-        label_path = os.path.join(ORIGINAL_LABELS_DIR, label_filename)
 
-        if not os.path.exists(rgb_path) or not os.path.exists(depth_path) or not os.path.exists(label_path):
-            print(f"Skipping frame {i}: Missing RGB, Depth, or Label file.")
+
+        if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
+            print(f"Skipping frame {i}: Missing RGB or Depth")
             continue
 
         # Load RGB frame
@@ -69,7 +69,7 @@ def fuse():
             print(f"Resized depth map for frame {i} to {W}x{H}")
 
         # Normalize depth (0-1 range)
-        normalized_depth = normalize_channel(depth_map, min_val=global_min_depth, max_val=global_max_depth,
+        normalized_depth = normalize_channel(np.log1p(depth_map), min_val=global_min_depth, max_val=global_max_depth,
                                              target_range=(0, 1))
 
         # All arrays must be float32 for concatenation
@@ -80,42 +80,44 @@ def fuse():
         normalized_depth = np.expand_dims(normalized_depth, axis=2)
 
         # Concatenate all channels along the last axis
-        stacked_channels = np.concatenate((
+        stacked_channels_hwc = np.concatenate((
             rgb_float,
             normalized_depth,
-        ), axis=2)
+        ), axis=2) #hwc
+
+        # --- Transpose to CHW before saving ---
+        stacked_channels_chw = stacked_channels_hwc.transpose((2, 0, 1))  # (C, H, W)
 
         # Verify final shape and data type
-        print(f"Frame {i}: Stacked channels shape: {stacked_channels.shape}, dtype: {stacked_channels.dtype}")
+        print(f"Frame {i}: Stacked channels HWC shape: {stacked_channels_hwc.shape}, "
+              f"CHW shape: {stacked_channels_chw.shape}, dtype: {stacked_channels_chw.dtype}")
+
 
         # --- Save as Multi-Channel TIFF (Float32) ---
-        output_tiff_path = os.path.join(OUTPUT_IMAGES_DIR, f"{base_filename}.tiff")
+        output_tiff_path = os.path.join(OUTPUT_TIFF_DIR, f"{base_filename}.tiff")
 
-        # PIL expects image data as (H, W, C) or (H, W) for single channel.
-        # For multi-channel float data, `Image.fromarray` is the way.
-        # Specify the mode as 'F' (float) or 'F;16'/'F;32' for specific bit depths if needed.
-        # For float32, mode='F' usually implies 32-bit float per pixel.
-        # Pillow's `Image.fromarray` directly handles (H, W, C) numpy arrays correctly for TIFF.
         try:
+            tifffile.imwrite(output_tiff_path, stacked_channels_chw, photometric='RGB', compression='deflate')
+            print(f"Saved multi-channel TIFF (CHW) using tifffile: {output_tiff_path}")
+        except ImportError:
+            # PIL expects image data as (H, W, C) or (H, W) for single channel.
+            # For multi-channel float data, `Image.fromarray` is the way.
+            # Specify the mode as 'F' (float) or 'F;16'/'F;32' for specific bit depths if needed.
+            # For float32, mode='F' usually implies 32-bit float per pixel.
+            # Pillow's `Image.fromarray` directly handles (H, W, C) numpy arrays correctly for TIFF.
+            try:
 
-            # Float32:
-            pil_image = Image.fromarray(stacked_channels, mode='F')  # Pillow's 'F' mode is for float32
+                # Float32:
+                pil_image = Image.fromarray(stacked_channels_hwc, mode='F')  # Pillow's 'F' mode is for float32
 
-            # Save with appropriate TIFF tags if necessary
-            pil_image.save(output_tiff_path, compression="tiff_deflate")  # tiff_deflate is a good lossless compression
-            print(f"Saved multi-channel TIFF: {output_tiff_path}")
-        except Exception as e:
-            print(f"Error saving TIFF {output_tiff_path}: {e}")
-            continue
+                # Save with appropriate TIFF tags if necessary
+                pil_image.save(output_tiff_path, compression="tiff_deflate")  # tiff_deflate is a good lossless compression
+                print(f"Saved multi-channel TIFF HWC: {output_tiff_path}")
+            except Exception as e:
+                print(f"Error saving TIFF {output_tiff_path}: {e}")
+                continue
 
-        # --- Copy Labels to New Dataset Structure ---
-        output_label_path = os.path.join(OUTPUT_LABELS_DIR, label_filename)
-        # The label format is already "0 0.48 0.63 0.65 0.71" which is exactly what YOLO needs.
-
-        shutil.copyfile(label_path, output_label_path)
-        print(f"Copied label file: {output_label_path}")
-
-    print("\nAll frames processed and saved as multi-channel TIFFs with corresponding labels.")
+    print("\nAll frames processed and saved as multi-channel TIFFs")
 
 
 def find_correct_exr_and_fix_it(dataset_jpg_dir,array_of_jpg_and_exr_dirs,exr_output_dir):
