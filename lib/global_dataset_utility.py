@@ -1,5 +1,8 @@
 
 import os
+
+import cv2
+
 from lib.utility import load_exr_depth
 
 #FOR GLOBAL DATASET MAX AND MIN
@@ -66,3 +69,21 @@ def calculate_min_depth_with_fixed_max(rgb_files, DEPTH_FRAMES_DIR, fixed_max_de
         global_min_depth = 0.0
 
     return global_min_depth, fixed_max_depth_value
+
+
+def down_grade_resolution_in_four_thirds(TARGET_WIDTH,rgb_frame,depth_map):
+    print("Automatically rescale in a 4:3 format...")
+    TARGET_HEIGHT = (TARGET_WIDTH / 4) * 3
+    print(f"New resolution: {TARGET_WIDTH}x{TARGET_HEIGHT}")
+    # --- Resizing ALL input channels to TARGET_WIDTH x TARGET_HEIGHT ---
+    # RGB (uint8)
+    rgb_frame_resized = cv2.resize(rgb_frame, (TARGET_WIDTH, TARGET_HEIGHT), interpolation=cv2.INTER_AREA)
+
+    # Depth map (float32)
+    # Note: INTER_AREA is good for downscaling, INTER_LINEAR or INTER_CUBIC for upscaling or general resizing.
+    # Since depth maps are often continuous, LINEAR might be slightly better than AREA even for downscaling.
+    depth_map_resized = cv2.resize(depth_map, (TARGET_WIDTH, TARGET_HEIGHT), interpolation=cv2.INTER_LINEAR)
+
+    return rgb_frame_resized, depth_map_resized
+
+
