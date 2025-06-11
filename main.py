@@ -15,7 +15,7 @@ if __name__ == '__main__':
 
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
 
-    fuse('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files','/home/jacobo/Downloads/mines_dataset/images/tiff')
+    #fuse('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files','/home/jacobo/Downloads/mines_dataset/images/tiff',640)
     # List all RGB frames (assuming they are named sequentially, e.g., 00000.jpg)
     #rgb_files = sorted([f for f in os.listdir('/home/jacobo/Downloads/mines_dataset/images/train') if f.endswith(('.jpeg', '.jpg'))])
 
