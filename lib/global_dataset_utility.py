@@ -1,4 +1,4 @@
-
+import shutil
 
 import cv2
 
@@ -89,10 +89,8 @@ def down_grade_resolution_in_four_thirds(TARGET_WIDTH,rgb_frame,depth_map):
 
     return rgb_frame_resized, depth_map_resized
 
-def split_80_20_training_dataset_for_validation_and_shuffle_them(TRAIN_PATH,TRAIN_LABEL_PATH,VALIDATION_PATH,VALIDATION_LABEL_PATH):
 
-
-def shuffle_frames_randomly(IMAGES_PATH,LABEL_PATH):
+def shuffle_frames_randomly(IMAGES_PATH, LABEL_PATH):
     """
     Shuffles image and corresponding label files randomly within a YOLOv5 dataset.
 
@@ -117,7 +115,7 @@ def shuffle_frames_randomly(IMAGES_PATH,LABEL_PATH):
 
     # 1. Gather all image and label files from the specified directories
     # os.path.isfile() is used to ensure we only process actual files, not subdirectories
-    # Added filters to exclude hidden files (starting with '.')
+    # Added filter to exclude hidden files (starting with '.').
     image_files = []
     for f in os.listdir(IMAGES_PATH):
         full_path = os.path.join(IMAGES_PATH, f)
@@ -204,9 +202,8 @@ def shuffle_frames_randomly(IMAGES_PATH,LABEL_PATH):
 
     # Determine the number of digits needed for zero-padding in the new sequential names (e.g., '001' for 3 digits)
     # This ensures consistent naming like 'frame_000', 'frame_001', up to 'frame_999' for 1000 files.
-    num_digits = len(str(len(
-        temp_paths_after_first_pass) - 1))  # If 1 file, this is len(str(0))=1. If 10 files, len(str(9))=1. If 100 files, len(str(99))=2.
-    if num_digits == 0:  # Handle edge case where there might be 0 or 1 file resulting in num_digits = 0
+    num_digits = len(str(len(temp_paths_after_first_pass) - 1))
+    if num_digits == 0:
         num_digits = 1
 
     for i, (temp_img_path, temp_lbl_path, img_ext) in enumerate(temp_paths_after_first_pass):
@@ -231,6 +228,114 @@ def shuffle_frames_randomly(IMAGES_PATH,LABEL_PATH):
 
     print("\n--- Shuffling complete! ---")
     print("All image and corresponding label files have been randomly shuffled and renamed sequentially.")
+
+
+def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VALIDATION_LABEL_PATH):
+    """
+    Splits a YOLOv5 dataset into training (80%) and validation (20%) sets.
+    It first shuffles the entire dataset to ensure generalization and then moves
+    the validation set images and their corresponding labels to separate directories.
+
+    Args:
+        TRAIN_PATH (str): The path to the directory containing the initial full training images.
+        TRAIN_LABEL_PATH (str): The path to the directory containing the initial full training labels.
+        VALIDATION_PATH (str): The path to the (initially empty) directory for validation images.
+        VALIDATION_LABEL_PATH (str): The path to the (initially empty) directory for validation labels.
+    """
+    # 1. Validate paths
+    if not os.path.isdir(TRAIN_PATH):
+        print(f"Error: TRAIN_PATH '{TRAIN_PATH}' does not exist or is not a directory.")
+        return
+    if not os.path.isdir(TRAIN_LABEL_PATH):
+        print(f"Error: TRAIN_LABEL_PATH '{TRAIN_LABEL_PATH}' does not exist or is not a directory.")
+        return
+
+    # Ensure validation directories exist (create if not)
+    os.makedirs(VALIDATION_PATH, exist_ok=True)
+    os.makedirs(VALIDATION_LABEL_PATH, exist_ok=True)
+
+    # 2. Initial shuffle of the entire dataset within the TRAIN_PATH and TRAIN_LABEL_PATH
+    # This randomizes the order of all frames and renames them sequentially (e.g., frame_000.jpg)
+    print("\n--- Step 1: Shuffling the entire dataset in TRAIN_PATH and TRAIN_LABEL_PATH ---")
+    shuffle_frames_randomly(TRAIN_PATH, TRAIN_LABEL_PATH)
+    print("Initial dataset shuffling complete. Files are now sequentially named and randomized.")
+
+    # 3. Re-gather files after shuffling and renaming to get the new, consistent names
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
+
+    # Get all image files with their NEW sequential names, applying the same filters as shuffle_frames_randomly
+    all_image_files = []
+    for f in os.listdir(TRAIN_PATH):
+        full_path = os.path.join(TRAIN_PATH, f)
+        if os.path.isfile(full_path) and f.lower().endswith(image_extensions):
+            if f.startswith('.'):
+                continue  # Skip hidden files
+            all_image_files.append(f)
+
+    # Get all label files with their NEW sequential names
+    all_label_files = [f for f in os.listdir(TRAIN_LABEL_PATH) if
+                       os.path.isfile(os.path.join(TRAIN_LABEL_PATH, f)) and f.lower().endswith('.txt')]
+
+    labels_dict = {os.path.splitext(f)[0]: f for f in all_label_files}
+
+    # Form matched pairs based on the *new* names
+    matched_pairs = []  # Stores (image_filename, label_filename)
+    for img_file in all_image_files:
+        base_name_without_ext = os.path.splitext(img_file)[0]
+        if base_name_without_ext in labels_dict:
+            matched_pairs.append((img_file, labels_dict[base_name_without_ext]))
+        else:
+            print(
+                f"Warning: After initial shuffle, no matching label found for '{img_file}'. This might indicate an issue during the shuffle or an unmatched file. Skipping for split.")
+
+    if not matched_pairs:
+        print("No matched image-label pairs found after initial shuffle. Cannot proceed with split.")
+        return
+
+    print(f"\nFound {len(matched_pairs)} matched image-label pairs after initial shuffle for splitting.")
+
+    # 4. Determine split points (80% train, 20% validation)
+    num_total_frames = len(matched_pairs)
+    num_validation_frames = int(num_total_frames * 0.20)
+
+    # Ensure there's at least one frame in validation if possible
+    if num_validation_frames == 0 and num_total_frames > 0:
+        num_validation_frames = 1
+        print("Dataset size is very small. Ensuring at least 1 frame for validation.")
+    elif num_total_frames == 0:
+        print("No frames to split. Exiting.")
+        return
+
+    # Take the last 'num_validation_frames' from the list for validation.
+    # Since the initial shuffle already randomized the content, taking the last N is equivalent
+    # to taking a random N, but simplifies the logic for moving.
+    validation_pairs = matched_pairs[-num_validation_frames:]
+    training_pairs_remaining = matched_pairs[:-num_validation_frames]
+
+    print(f"Splitting dataset: {len(training_pairs_remaining)} for training, {len(validation_pairs)} for validation.")
+
+    # 5. Move validation files
+    print("\n--- Step 2: Moving validation files to VALIDATION_PATH and VALIDATION_LABEL_PATH ---")
+    for img_file, lbl_file in validation_pairs:
+        current_img_path = os.path.join(TRAIN_PATH, img_file)
+        current_lbl_path = os.path.join(TRAIN_LABEL_PATH, lbl_file)
+
+        dest_img_path = os.path.join(VALIDATION_PATH, img_file)
+        dest_lbl_path = os.path.join(VALIDATION_LABEL_PATH, lbl_file)
+
+        try:
+            shutil.move(current_img_path, dest_img_path)
+            shutil.move(current_lbl_path, dest_lbl_path)
+            # print(f"Moved '{img_file}' and '{lbl_file}' to validation.")
+        except FileNotFoundError:
+            print(f"Error: File not found during move operation for '{img_file}' or '{lbl_file}'. Skipping.")
+        except Exception as e:
+            print(f"An unexpected error occurred while moving '{img_file}': {e}. Skipping.")
+
+    print("\n--- Dataset split complete! ---")
+    print(f"Training set now contains {len(training_pairs_remaining)} pairs.")
+    print(f"Validation set now contains {len(validation_pairs)} pairs.")
+
 
 
 
