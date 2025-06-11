@@ -4,7 +4,7 @@ import os
 import tifffile
 from PIL import Image # For saving multi-channel TIFF
 from lib.utility import load_exr_depth, normalize_channel, generate_file_hash, copy_and_rename_file
-from lib.global_dataset_utility import calculate_global_min_max, down_grade_resolution_in_four_thirds
+from lib.global_dataset_utility import calculate_global_min_max, down_grade_resolution_in_four_thirds_with_depths
 
 
 def fuse(RGB_FRAMES_DIR, DEPTH_FRAMES_DIR, OUTPUT_TIFF_DIR,TARGET_WIDTH):
@@ -65,7 +65,7 @@ def fuse(RGB_FRAMES_DIR, DEPTH_FRAMES_DIR, OUTPUT_TIFF_DIR,TARGET_WIDTH):
 
 
         if TARGET_WIDTH:
-            rgb_frame,depth_map = down_grade_resolution_in_four_thirds(TARGET_WIDTH=TARGET_WIDTH,rgb_frame=rgb_frame, depth_map=depth_map)
+            rgb_frame,depth_map = down_grade_resolution_in_four_thirds_with_depths(TARGET_WIDTH=TARGET_WIDTH, rgb_frame=rgb_frame, depth_map=depth_map)
 
 
         # Ensure all inputs have the same resolution

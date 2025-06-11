@@ -1,6 +1,7 @@
 import shutil
 
 import cv2
+from PIL import Image # Import Pillow for image processing
 
 from lib.utility import load_exr_depth
 import os
@@ -74,9 +75,73 @@ def calculate_min_depth_with_fixed_max(rgb_files, DEPTH_FRAMES_DIR, fixed_max_de
     return global_min_depth, fixed_max_depth_value
 
 
-def down_grade_resolution_in_four_thirds(TARGET_WIDTH,rgb_frame,depth_map):
+def resize_resolution_maintaining_aspect_ratio(TARGET_WIDTH, IMAGES_PATH):
+    """
+    Resizes all images in a specified directory to a target width while maintaining
+    their aspect ratio. Images are overwritten with their resized versions.
+    It handles both downgrading and upgrading resolution. Hidden files (starting with '.')
+    are skipped.
+
+    Args:
+        TARGET_WIDTH (int): The desired width for all images.
+        IMAGES_PATH (str): The path to the directory containing image files.
+    """
+    # Validate IMAGES_PATH
+    if not os.path.isdir(IMAGES_PATH):
+        print(f"Error: IMAGES_PATH '{IMAGES_PATH}' does not exist or is not a directory.")
+        return
+
+    # Validate TARGET_WIDTH
+    if not isinstance(TARGET_WIDTH, int) or TARGET_WIDTH <= 0:
+        print(f"Error: TARGET_WIDTH must be a positive integer. Got '{TARGET_WIDTH}'.")
+        return
+
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
+    resized_count = 0
+
+    print(f"\n--- Resizing images in '{IMAGES_PATH}' to a target width of {TARGET_WIDTH}px ---")
+
+    for filename in os.listdir(IMAGES_PATH):
+        full_path = os.path.join(IMAGES_PATH, filename)
+
+        # Skip directories and hidden files
+        if os.path.isdir(full_path) or filename.startswith('.'):
+            # print(f"Skipping directory or hidden file: '{filename}'")
+            continue
+
+        # Check if it's a supported image file
+        if not filename.lower().endswith(image_extensions):
+            print(f"Skipping non-image file: '{filename}'")
+            continue
+
+        try:
+            with Image.open(full_path) as img:
+                original_width, original_height = img.size
+
+                # Calculate new height maintaining aspect ratio
+                aspect_ratio = original_height / original_width
+                new_height = int(TARGET_WIDTH * aspect_ratio)
+
+                # Resize the image using Image.Resampling.LANCZOS
+                resized_img = img.resize((TARGET_WIDTH, new_height), Image.Resampling.LANCZOS)
+
+                # Save the resized image, overwriting the original
+                resized_img.save(full_path)
+                resized_count += 1
+                # print(f"Resized '{filename}' from {original_width}x{original_height} to {TARGET_WIDTH}x{new_height}.")
+
+        except FileNotFoundError:
+            print(f"Error: Image file not found during resize operation for '{filename}'. Skipping.")
+        except Exception as e:
+            print(f"An unexpected error occurred while processing '{filename}': {e}. Skipping.")
+
+    print(f"\n--- Image resizing complete! ---")
+    print(f"Successfully resized {resized_count} images in '{IMAGES_PATH}'.")
+
+
+def down_grade_resolution_in_four_thirds_with_depths(TARGET_WIDTH, rgb_frame, depth_map):
     print("Automatically rescale in a 4:3 format...")
-    TARGET_HEIGHT = int((TARGET_WIDTH / 4) * 3)
+    TARGET_HEIGHT = int((TARGET_WIDTH * 4) / 3)
     print(f"New resolution: {TARGET_WIDTH}x{TARGET_HEIGHT}")
     # --- Resizing ALL input channels to TARGET_WIDTH x TARGET_HEIGHT ---
     # RGB (uint8)
@@ -92,11 +157,13 @@ def down_grade_resolution_in_four_thirds(TARGET_WIDTH,rgb_frame,depth_map):
 
 def shuffle_frames_randomly(IMAGES_PATH, LABEL_PATH):
     """
-    Shuffles image and corresponding label files randomly within a YOLOv5 dataset.
+    Shuffles all image files within IMAGES_PATH, and if a corresponding
+    label file exists in LABEL_PATH, that label file is also shuffled
+    alongside its image. Images without a corresponding label are still
+    shuffled and renamed.
 
-    This function renames image files and their linked label files to maintain
-    the consistency of the dataset after shuffling. It uses a two-pass renaming
-    strategy to avoid name conflicts during the shuffling process.
+    This function renames files using a two-pass strategy to avoid conflicts.
+    It excludes hidden files (starting with '.').
 
     Args:
         IMAGES_PATH (str): The path to the directory containing image files.
@@ -113,128 +180,117 @@ def shuffle_frames_randomly(IMAGES_PATH, LABEL_PATH):
     # Define supported image extensions for filtering
     image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
 
-    # 1. Gather all image and label files from the specified directories
-    # os.path.isfile() is used to ensure we only process actual files, not subdirectories
-    # Added filter to exclude hidden files (starting with '.').
-    image_files = []
-    for f in os.listdir(IMAGES_PATH):
-        full_path = os.path.join(IMAGES_PATH, f)
-        if os.path.isfile(full_path) and f.lower().endswith(image_extensions):
-            if f.startswith('.'):  # Exclude files starting with a dot, typically hidden on Linux
-                print(f"Skipping hidden file: '{f}'")
-                continue
-            image_files.append(f)
+    # 1. Gather all valid image files and identify their potential label partners
+    all_files_to_process = []  # Stores (original_image_full_path, original_label_full_path_or_None, original_image_extension)
 
-    label_files = [f for f in os.listdir(LABEL_PATH) if
-                   os.path.isfile(os.path.join(LABEL_PATH, f)) and f.lower().endswith('.txt')]
+    # Get all label files and create a dictionary for quick lookup by base name
+    label_files_in_dir = [f for f in os.listdir(LABEL_PATH) if
+                          os.path.isfile(os.path.join(LABEL_PATH, f)) and f.lower().endswith('.txt')]
+    labels_dict = {os.path.splitext(f)[0]: os.path.join(LABEL_PATH, f) for f in label_files_in_dir}
 
-    # Create a dictionary for quick lookup of label files by their base name (e.g., 'frame001')
-    labels_dict = {os.path.splitext(f)[0]: f for f in label_files}
+    # Iterate through image files to determine if they have a corresponding label
+    for img_file in os.listdir(IMAGES_PATH):
+        full_img_path = os.path.join(IMAGES_PATH, img_file)
 
-    # List to store tuples: (original_image_full_path, original_label_full_path, original_image_extension)
-    # This list will hold information for all successfully matched image-label pairs.
-    matched_pairs_info = []
+        # Skip directories and hidden files
+        if os.path.isdir(full_img_path) or img_file.startswith('.'):
+            # print(f"Skipping directory or hidden file: '{img_file}'")
+            continue
 
-    # Iterate through image files to find their corresponding label files
-    for img_file in image_files:
-        base_name_without_ext = os.path.splitext(img_file)[0]  # Get filename without extension
-        img_ext = os.path.splitext(img_file)[1]  # Get the original image extension (e.g., '.jpg')
+        # Check if it's a supported image file
+        if not img_file.lower().endswith(image_extensions):
+            print(f"Skipping non-image file: '{img_file}' in IMAGES_PATH.")
+            continue
 
-        # Check if a label file with the same base name exists
-        if base_name_without_ext in labels_dict:
-            original_image_path = os.path.join(IMAGES_PATH, img_file)
-            original_label_path = os.path.join(LABEL_PATH, labels_dict[base_name_without_ext])
-            matched_pairs_info.append((original_image_path, original_label_path, img_ext))
-        else:
-            print(f"Warning: No matching label (.txt) found for image: '{img_file}'. Skipping this pair.")
+        base_name_without_ext = os.path.splitext(img_file)[0]
+        img_ext = os.path.splitext(img_file)[1]
 
-    # If no matched pairs are found, exit the function
-    if not matched_pairs_info:
-        print("No matched image-label pairs found with corresponding .txt files. Exiting.")
+        # Check if a label file exists for this image
+        corresponding_label_path = labels_dict.get(base_name_without_ext)
+
+        # Add to the list to be processed, even if no label exists
+        all_files_to_process.append((full_img_path, corresponding_label_path, img_ext))
+        if corresponding_label_path is None:
+            print(f"Info: Image '{img_file}' has no corresponding label file. It will still be renamed.")
+
+    if not all_files_to_process:
+        print("No valid image files found to shuffle. Exiting.")
         return
 
-    print(f"Found {len(matched_pairs_info)} image-label pairs to shuffle.")
+    print(f"Found {len(all_files_to_process)} image files (some without labels) to shuffle.")
 
-    # This list will store (temporary_image_full_path, temporary_label_full_path, original_image_extension)
+    # This list will store (temporary_image_full_path, temporary_label_full_path_or_None, original_image_extension)
     # for files that were successfully renamed in the first pass.
     temp_paths_after_first_pass = []
 
     # 2. First Pass: Rename all original files to unique temporary names
     # This avoids potential conflicts if a new shuffled name happens to be an existing original name.
     print("\n--- Phase 1: Renaming original files to temporary unique names ---")
-    for i, (orig_img_path, orig_lbl_path, img_ext) in enumerate(matched_pairs_info):
+    for i, (orig_img_path, orig_lbl_path, img_ext) in enumerate(all_files_to_process):
         temp_id = uuid.uuid4().hex  # Generate a unique hexadecimal ID for temporary names
 
-        temp_img_name = f"{temp_id}{img_ext}"  # e.g., 'a1b2c3d4e5f6.jpg'
-        temp_lbl_name = f"{temp_id}.txt"  # e.g., 'a1b2c3d4e5f6.txt'
-
+        temp_img_name = f"{temp_id}{img_ext}"
         temp_img_path = os.path.join(IMAGES_PATH, temp_img_name)
-        temp_lbl_path = os.path.join(LABEL_PATH, temp_lbl_name)
+
+        temp_lbl_name = f"{temp_id}.txt"
+        temp_lbl_path = os.path.join(LABEL_PATH, temp_lbl_name) if orig_lbl_path else None
 
         try:
-            # Attempt to rename the original image and label files to their temporary names
             os.rename(orig_img_path, temp_img_path)
-            os.rename(orig_lbl_path, temp_lbl_path)
-            # If successful, add the temporary paths and original extension to our list
+            if orig_lbl_path:  # Only rename label if it existed
+                os.rename(orig_lbl_path, temp_lbl_path)
             temp_paths_after_first_pass.append((temp_img_path, temp_lbl_path, img_ext))
         except FileNotFoundError:
             print(
-                f"Error: Original file not found during temp rename for '{os.path.basename(orig_img_path)}' or its label. Skipping this pair.")
+                f"Error: Original file not found during temp rename for '{os.path.basename(orig_img_path)}' (or its label). Skipping this pair.")
         except Exception as e:
-            # Catch any other unexpected errors during renaming
             print(
                 f"An unexpected error occurred during temporary rename of '{os.path.basename(orig_img_path)}': {e}. Skipping this pair.")
 
-    # If no files were successfully moved to temporary names, there's nothing to shuffle
     if not temp_paths_after_first_pass:
         print("No files were successfully renamed to temporary names. Shuffling aborted.")
         return
 
     # 3. Shuffle the list of temporary file paths
-    # This randomizes the order in which files will be renamed in the final pass.
     print("\n--- Phase 2: Shuffling temporary file paths ---")
     random.shuffle(temp_paths_after_first_pass)
     print("Temporary file paths have been randomly shuffled.")
 
     # 4. Second Pass: Rename from temporary names to new shuffled sequential names
-    # This assigns new, organized names to the now-shuffled files.
     print("\n--- Phase 3: Renaming temporary files to final shuffled sequential names ---")
 
-    # Determine the number of digits needed for zero-padding in the new sequential names (e.g., '001' for 3 digits)
-    # This ensures consistent naming like 'frame_000', 'frame_001', up to 'frame_999' for 1000 files.
     num_digits = len(str(len(temp_paths_after_first_pass) - 1))
     if num_digits == 0:
         num_digits = 1
 
     for i, (temp_img_path, temp_lbl_path, img_ext) in enumerate(temp_paths_after_first_pass):
-        # Create a new sequential base name (e.g., 'frame_000', 'frame_001', etc.)
         new_base_name = f"frame_{i:0{num_digits}d}"
 
-        # Construct the final full paths for the shuffled image and label files
         final_img_path = os.path.join(IMAGES_PATH, f"{new_base_name}{img_ext}")
-        final_lbl_path = os.path.join(LABEL_PATH, f"{new_base_name}.txt")
+        final_lbl_path = os.path.join(LABEL_PATH, f"{new_base_name}.txt") if temp_lbl_path else None
 
         try:
-            # Attempt to rename the temporary image and label files to their final shuffled names
             os.rename(temp_img_path, final_img_path)
-            os.rename(temp_lbl_path, final_lbl_path)
+            if temp_lbl_path:  # Only rename label if it existed as a temporary file
+                os.rename(temp_lbl_path, final_lbl_path)
         except FileNotFoundError:
             print(
-                f"Error: Temporary file not found during final rename for '{os.path.basename(temp_img_path)}' or its label. This file might have been skipped earlier. Skipping.")
+                f"Error: Temporary file not found during final rename for '{os.path.basename(temp_img_path)}' (or its label). This file might have been skipped earlier. Skipping.")
         except Exception as e:
-            # Catch any other unexpected errors during the final renaming
             print(
                 f"An unexpected error occurred during final rename of '{os.path.basename(temp_img_path)}': {e}. Skipping this pair.")
 
     print("\n--- Shuffling complete! ---")
-    print("All image and corresponding label files have been randomly shuffled and renamed sequentially.")
+    print(
+        "All image files (and their corresponding labels if they exist) have been randomly shuffled and renamed sequentially.")
 
 
 def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VALIDATION_LABEL_PATH):
     """
     Splits a YOLOv5 dataset into training (80%) and validation (20%) sets.
-    It first shuffles the entire dataset to ensure generalization and then moves
-    the validation set images and their corresponding labels to separate directories.
+    It first shuffles the entire dataset (including images without labels)
+    to ensure generalization and then moves the validation set images and their
+    corresponding labels (if present) to separate directories.
 
     Args:
         TRAIN_PATH (str): The path to the directory containing the initial full training images.
@@ -264,7 +320,7 @@ def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VAL
     image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
 
     # Get all image files with their NEW sequential names, applying the same filters as shuffle_frames_randomly
-    all_image_files = []
+    all_image_files = []  # Will store image filenames (e.g., 'frame_000.jpg')
     for f in os.listdir(TRAIN_PATH):
         full_path = os.path.join(TRAIN_PATH, f)
         if os.path.isfile(full_path) and f.lower().endswith(image_extensions):
@@ -273,32 +329,32 @@ def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VAL
             all_image_files.append(f)
 
     # Get all label files with their NEW sequential names
-    all_label_files = [f for f in os.listdir(TRAIN_LABEL_PATH) if
-                       os.path.isfile(os.path.join(TRAIN_LABEL_PATH, f)) and f.lower().endswith('.txt')]
+    # Note: This will only pick up labels for images that had labels before the shuffle.
+    all_label_files_in_dir = [f for f in os.listdir(TRAIN_LABEL_PATH) if
+                              os.path.isfile(os.path.join(TRAIN_LABEL_PATH, f)) and f.lower().endswith('.txt')]
+    labels_dict = {os.path.splitext(f)[0]: f for f in all_label_files_in_dir}
 
-    labels_dict = {os.path.splitext(f)[0]: f for f in all_label_files}
-
-    # Form matched pairs based on the *new* names
-    matched_pairs = []  # Stores (image_filename, label_filename)
+    # Form pairs that include image filenames and their label filenames (or None if no label)
+    # This list will be shuffled for the split
+    all_files_for_split = []  # Stores (image_filename, label_filename_or_None)
     for img_file in all_image_files:
         base_name_without_ext = os.path.splitext(img_file)[0]
-        if base_name_without_ext in labels_dict:
-            matched_pairs.append((img_file, labels_dict[base_name_without_ext]))
-        else:
-            print(
-                f"Warning: After initial shuffle, no matching label found for '{img_file}'. This might indicate an issue during the shuffle or an unmatched file. Skipping for split.")
+        corresponding_label_file = labels_dict.get(base_name_without_ext)
+        all_files_for_split.append((img_file, corresponding_label_file))
 
-    if not matched_pairs:
-        print("No matched image-label pairs found after initial shuffle. Cannot proceed with split.")
+    if not all_files_for_split:
+        print("No image files found after initial shuffle. Cannot proceed with split.")
         return
 
-    print(f"\nFound {len(matched_pairs)} matched image-label pairs after initial shuffle for splitting.")
+    # 4. Shuffle the combined list to ensure random distribution for the split
+    random.shuffle(all_files_for_split)
 
-    # 4. Determine split points (80% train, 20% validation)
-    num_total_frames = len(matched_pairs)
+    print(f"\nFound {len(all_files_for_split)} image files (some without labels) for splitting.")
+
+    # 5. Determine split points (80% train, 20% validation)
+    num_total_frames = len(all_files_for_split)
     num_validation_frames = int(num_total_frames * 0.20)
 
-    # Ensure there's at least one frame in validation if possible
     if num_validation_frames == 0 and num_total_frames > 0:
         num_validation_frames = 1
         print("Dataset size is very small. Ensuring at least 1 frame for validation.")
@@ -306,35 +362,44 @@ def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VAL
         print("No frames to split. Exiting.")
         return
 
-    # Take the last 'num_validation_frames' from the list for validation.
-    # Since the initial shuffle already randomized the content, taking the last N is equivalent
-    # to taking a random N, but simplifies the logic for moving.
-    validation_pairs = matched_pairs[-num_validation_frames:]
-    training_pairs_remaining = matched_pairs[:-num_validation_frames]
+    validation_set_items = all_files_for_split[:num_validation_frames]
+    training_set_items_remaining = all_files_for_split[num_validation_frames:]
 
-    print(f"Splitting dataset: {len(training_pairs_remaining)} for training, {len(validation_pairs)} for validation.")
+    print(
+        f"Splitting dataset: {len(training_set_items_remaining)} for training, {len(validation_set_items)} for validation.")
 
-    # 5. Move validation files
+    # 6. Move validation files
     print("\n--- Step 2: Moving validation files to VALIDATION_PATH and VALIDATION_LABEL_PATH ---")
-    for img_file, lbl_file in validation_pairs:
+    moved_count = 0
+    for img_file, lbl_file in validation_set_items:
         current_img_path = os.path.join(TRAIN_PATH, img_file)
-        current_lbl_path = os.path.join(TRAIN_LABEL_PATH, lbl_file)
-
         dest_img_path = os.path.join(VALIDATION_PATH, img_file)
-        dest_lbl_path = os.path.join(VALIDATION_LABEL_PATH, lbl_file)
 
         try:
             shutil.move(current_img_path, dest_img_path)
-            shutil.move(current_lbl_path, dest_lbl_path)
-            # print(f"Moved '{img_file}' and '{lbl_file}' to validation.")
+            moved_count += 1
+
+            if lbl_file:  # Only move label if it exists
+                current_lbl_path = os.path.join(TRAIN_LABEL_PATH, lbl_file)
+                dest_lbl_path = os.path.join(VALIDATION_LABEL_PATH, lbl_file)
+                shutil.move(current_lbl_path, dest_lbl_path)
+                # print(f"Moved '{img_file}' and '{lbl_file}' to validation.")
+            else:
+                # print(f"Moved '{img_file}' to validation (no associated label).")
+                pass  # This is expected for unannotated images
+
         except FileNotFoundError:
-            print(f"Error: File not found during move operation for '{img_file}' or '{lbl_file}'. Skipping.")
+            print(f"Error: File not found during move operation for '{img_file}' (or its label). Skipping.")
         except Exception as e:
             print(f"An unexpected error occurred while moving '{img_file}': {e}. Skipping.")
 
-    print("\n--- Dataset split complete! ---")
-    print(f"Training set now contains {len(training_pairs_remaining)} pairs.")
-    print(f"Validation set now contains {len(validation_pairs)} pairs.")
+    print(f"\n--- Dataset split complete! Moved {moved_count} images to validation. ---")
+    print(
+        f"Training set now contains {len(os.listdir(TRAIN_PATH)) - len([f for f in os.listdir(TRAIN_PATH) if f.startswith('.') or os.path.isdir(os.path.join(TRAIN_PATH, f))])} valid images.")
+    print(
+        f"Validation set now contains {len(os.listdir(VALIDATION_PATH)) - len([f for f in os.listdir(VALIDATION_PATH) if f.startswith('.') or os.path.isdir(os.path.join(VALIDATION_PATH, f))])} valid images.")
+
+
 
 
 
