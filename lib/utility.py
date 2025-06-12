@@ -2,9 +2,14 @@ import shutil
 
 import OpenEXR
 import Imath
+import cv2
 import numpy as np
 import hashlib
 import os
+
+import tifffile
+from matplotlib import pyplot as plt
+
 
 # --- Normalization Helpers ---
 def normalize_channel(channel_data, min_val=None, max_val=None, target_range=(0, 1)):
@@ -213,4 +218,75 @@ def check_exr_content(exr_file_path):
 
     except Exception as e:
         print(f"Error inspecting EXR file {exr_file_path}: {e}")
+
+
+def visualize_multichannel_tiff(tiff_file_path: str, preview_output_dir: str):
+    """
+    Loads a 4-channel (RGB + Normalized Depth) TIFF in CHW format,
+    displays its individual channels, and saves preview images.
+
+    Args:
+        tiff_file_path (str): The full path to the TIFF file to visualize.
+        preview_output_dir (str): The directory where the preview images
+                                  (RGB and Depth) should be saved.
+    """
+    try:
+        # Ensure the preview output directory exists
+        os.makedirs(preview_output_dir, exist_ok=True)
+
+        # Load the TIFF image
+        stacked_channels_chw = tifffile.imread(tiff_file_path)
+
+        print(f"Loaded TIFF: {tiff_file_path}")
+        print(f"Shape (C, H, W): {stacked_channels_chw.shape}")
+        print(f"Data Type: {stacked_channels_chw.dtype}")
+
+        if stacked_channels_chw.shape[0] != 4:
+            print(
+                f"Error: Expected 4 channels (RGB + Depth), but found {stacked_channels_chw.shape[0]} in {tiff_file_path}.")
+            return
+
+        # Extract RGB channels (channels 0, 1, 2) and transpose to HWC
+        rgb_hwc = stacked_channels_chw[0:3, :, :].transpose((1, 2, 0))  # (H, W, C)
+
+        # Extract Normalized Depth channel (channel 3)
+        normalized_depth = stacked_channels_chw[3, :, :]  # (H, W)
+
+        # --- Display Images using Matplotlib ---
+        plt.figure(figsize=(15, 7))
+
+        # Plot RGB
+        plt.subplot(1, 2, 1)  # 1 row, 2 columns, 1st plot
+        plt.imshow(rgb_hwc)  # matplotlib handles float 0-1 RGB
+        plt.title('RGB Channels (0-1 Normalized)')
+        plt.axis('off')
+
+        # Plot Normalized Depth with a colormap
+        plt.subplot(1, 2, 2)  # 1 row, 2 columns, 2nd plot
+        depth_img = plt.imshow(normalized_depth, cmap='magma')
+        plt.colorbar(depth_img, label='Normalized Depth (0-1)')
+        plt.title('Normalized Depth Channel')
+        plt.axis('off')
+
+        plt.tight_layout()
+        plt.show()
+
+        # --- Save Individual Channel Previews ---
+        # Get base filename without extension for saving previews
+        base_name = os.path.splitext(os.path.basename(tiff_file_path))[0]
+
+        # Save RGB preview
+        rgb_preview = (rgb_hwc * 255).astype(np.uint8)
+        cv2.imwrite(os.path.join(preview_output_dir, f"{base_name}_rgb_preview.png"),
+                    cv2.cvtColor(rgb_preview, cv2.COLOR_RGB2BGR))  # Convert RGB to BGR for OpenCV save
+        print(f"Saved RGB preview to {os.path.join(preview_output_dir, f'{base_name}_rgb_preview.png')}")
+
+        # Save Depth preview (with colormap)
+        depth_for_colormap = (normalized_depth * 255).astype(np.uint8)
+        depth_colored_preview = cv2.applyColorMap(depth_for_colormap, cv2.COLORMAP_MAGMA)
+        cv2.imwrite(os.path.join(preview_output_dir, f"{base_name}_depth_preview.png"), depth_colored_preview)
+        print(f"Saved Depth preview to {os.path.join(preview_output_dir, f'{base_name}_depth_preview.png')}")
+
+    except Exception as e:
+        print(f"An error occurred while visualizing {tiff_file_path}: {e}")
 

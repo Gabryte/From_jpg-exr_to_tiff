@@ -1,6 +1,6 @@
 from lib.global_dataset_utility import calculate_global_min_max, split_and_shuffle_dataset
 from lib.main_functions import find_correct_exr_and_fix_it
-from lib.utility import get_input_directories
+from lib.utility import get_input_directories, visualize_multichannel_tiff
 from lib.utility import find_missing_exr_for_jpg
 from lib.main_functions import fuse
 from lib.global_dataset_utility import resize_resolution_maintaining_aspect_ratio
@@ -28,7 +28,27 @@ if __name__ == '__main__':
 
     #resize_resolution_maintaining_aspect_ratio(480,'/home/jacobo/Downloads/mines_dataset/images/train')
 
-    split_and_shuffle_dataset('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/labels/train','/home/jacobo/Downloads/mines_dataset/images/val','/home/jacobo/Downloads/mines_dataset/labels/val')
+    #split_and_shuffle_dataset('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/labels/train','/home/jacobo/Downloads/mines_dataset/images/val','/home/jacobo/Downloads/mines_dataset/labels/val')
+
+    # Define your main TIFF output directory
+    tiff_data_directory = "/home/jacobo/Downloads/tiff"
+
+    # Define the directory where you want to save the preview images
+    preview_output_directory = "/home/jacobo/Downloads/tiff_previews"
+
+    # List all TIFF files in your data directory
+    tiff_files_in_dir = sorted([f for f in os.listdir(tiff_data_directory) if f.endswith('.tiff')])
+
+    if tiff_files_in_dir:
+        # Select the first TIFF file found for visualization
+        first_tiff_path = os.path.join(tiff_data_directory, tiff_files_in_dir[0])
+
+        print(f"Calling visualization for: {first_tiff_path}")
+        # Call the refined function with the specific TIFF path and the preview output directory
+        visualize_multichannel_tiff(first_tiff_path, preview_output_directory)
+    else:
+        print(f"No TIFF files found in '{tiff_data_directory}'. Please ensure the processing has run and files exist.")
+
 
 
 
