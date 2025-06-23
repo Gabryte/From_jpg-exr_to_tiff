@@ -55,7 +55,7 @@ if __name__ == '__main__':
     output_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/'
 
     input_image_subdir = 'images/train'
-    output_image_subdir = 'images/train'  # Keep same subdirectory structure
+    output_image_subdir = 'images/train'  # Keeping same subdirectory structure
 
     input_val_subdir = 'images/val'
     output_val_subdir = 'images/val'
