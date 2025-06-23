@@ -1,12 +1,13 @@
 import shutil
-
-import cv2
 from PIL import Image # Import Pillow for image processing
-
 from lib.utility import load_exr_depth
-import os
 import random
 import uuid
+import cv2
+import numpy as np
+import os
+from tqdm import tqdm
+import tifffile  # Use tifffile as it's best for multi-channel TIFFs, even if converting to PNG later
 
 
 #FOR GLOBAL DATASET MAX AND MIN
@@ -399,6 +400,65 @@ def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VAL
     print(
         f"Validation set now contains {len(os.listdir(VALIDATION_PATH)) - len([f for f in os.listdir(VALIDATION_PATH) if f.startswith('.') or os.path.isdir(os.path.join(VALIDATION_PATH, f))])} valid images.")
 
+
+# Function to process and convert images
+def process_and_convert_images(input_img_dir, output_img_dir):
+    os.makedirs(output_img_dir, exist_ok=True)
+
+    # Assuming TIFFs are in `input_img_dir`
+    image_files = [f for f in os.listdir(input_img_dir) if f.lower().endswith(('.tiff', '.tif'))]
+
+    if not image_files:
+        print(f"No TIFF files found in {input_img_dir}. Skipping conversion.")
+        return
+
+    for filename in tqdm(image_files, desc=f"Converting images in {os.path.basename(input_img_dir)}"):
+        input_path = os.path.join(input_img_dir, filename)
+        output_filename = os.path.splitext(filename)[0] + '.png'  # Change extension to .png
+        output_path = os.path.join(output_img_dir, output_filename)
+
+        try:
+            # Use tifffile to load the original float32 CHW TIFF
+            # tifffile.imread automatically handles float32 and CHW (if saved that way)
+            img_chw_float32 = tifffile.imread(input_path)
+
+            if img_chw_float32.ndim != 3 or img_chw_float32.shape[0] != 4:
+                print(f"Warning: {input_path} has unexpected shape {img_chw_float32.shape}. Skipping.")
+                continue
+
+            # Assuming (0,1) float32 RGB and (0,1) float32 normalized depth
+            # Channels are C, H, W (4, H, W) -> [R, G, B, Depth]
+
+            # Extract channels
+            rgb_float = img_chw_float32[:3, :, :]  # (3, H, W)
+            depth_float = img_chw_float32[3, :, :]  # (H, W)
+
+            # Scale RGB to 0-255 and convert to uint8 (still CHW)
+            # Make sure to clip values to [0, 255] just in case of minor float errors
+            rgb_uint8_chw = np.clip((rgb_float * 255.0), 0, 255).astype(np.uint8)
+
+            # Scale Depth to 0-255 and convert to uint8 (still HW)
+            # Again, clip to ensure valid uint8 range
+            depth_uint8_hw = np.clip((depth_float * 255.0), 0, 255).astype(np.uint8)
+
+            # Convert RGB from CHW to HWC for OpenCV
+            rgb_uint8_hwc = rgb_uint8_chw.transpose((1, 2, 0))  # (H, W, 3)
+
+            # Convert RGB (now HWC) to BGR for OpenCV's default saving (PNG is BGR+Alpha)
+            rgb_uint8_bgr = cv2.cvtColor(rgb_uint8_hwc, cv2.COLOR_RGB2BGR)
+
+            # Expand depth to HWC format (H, W, 1)
+            depth_uint8_hwc = np.expand_dims(depth_uint8_hw, axis=2)
+
+            # Concatenate to form a 4-channel HWC image (BGR + Depth) for cv2.imwrite
+            final_4ch_img_uint8_hwc = np.concatenate((rgb_uint8_bgr, depth_uint8_hwc), axis=2)
+
+            # Save as PNG. OpenCV treats 4-channel PNG as BGRA, which works for YOLO.
+            cv2.imwrite(output_path, final_4ch_img_uint8_hwc)
+            # print(f"Converted and saved: {output_path} (shape: {final_4ch_img_uint8_hwc.shape}, dtype: {final_4ch_img_uint8_hwc.dtype})")
+
+        except Exception as e:
+            print(f"Error processing {input_path}: {e}. Skipping.")
 
 
 
