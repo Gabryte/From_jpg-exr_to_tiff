@@ -1,34 +1,38 @@
-from lib.global_dataset_utility import calculate_global_min_max, split_and_shuffle_dataset, process_and_convert_images
-from lib.main_functions import find_correct_exr_and_fix_it
+from lib.global_dataset_utility import calculate_global_min_max, split_and_shuffle_dataset, process_and_convert_images, \
+    calculate_log_depth_global_min_max
+from lib.fusion_related_functions import find_correct_exr_and_fix_it, \
+    convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png
 from lib.utility import get_input_directories, visualize_multichannel_tiff
 from lib.utility import find_missing_exr_for_jpg
-from lib.main_functions import fuse
+from lib.fusion_related_functions import fuse
 from lib.global_dataset_utility import resize_resolution_maintaining_aspect_ratio
 import OpenEXR
 import Imath
 import numpy as np
 import os
 if __name__ == '__main__':
+    #Getting all the different directories of the exported images in jpg and exr files, because a single directory contains the extracted frames of a single video from the record 3d app of the iphone 16
     #array_of_exr_and_jpg_dirs = get_input_directories()
 
+    # --- Configuration needed in order to create a single training rgb dataset that have all of it's corresponding exr files associated via the same name. It's important for the next step of fusion between rgb and exr frames ---
     #find_correct_exr_and_fix_it("/home/jacobo/Downloads/mines_dataset/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
 
+    # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
 
+    # --- Configuration in order to create a 4 channel tiff dataset, the result dataset needs to be converted into a png dataset compatible with yolo11 using convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset function---
     #fuse('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files','/home/jacobo/Downloads/mines_dataset/images/tiff',480)
-    # List all RGB frames (assuming they are named sequentially, e.g., 00000.jpg)
-    #rgb_files = sorted([f for f in os.listdir('/home/jacobo/Downloads/mines_dataset/images/train') if f.endswith(('.jpeg', '.jpg'))])
 
-    # Calculate max and min depth values measured on the entire dataset
-    #print("Calculating global min/max depth for consistent normalization...")
-    #global_min_depth, global_max_depth = calculate_global_min_max(rgb_files, '/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
-    #print("Global min depth: ", global_min_depth)
-    #print("Global max depth: ", global_max_depth)
 
+    # --- Configuration in order to resize rgb images ---
     #resize_resolution_maintaining_aspect_ratio(480,'/home/jacobo/Downloads/mines_dataset/images/train')
 
+    # --- Configuration for 80/20 shuffling and splitting of a dataset ---
     #split_and_shuffle_dataset('/home/jacobo/Downloads/mines_multichannel_dataset/images/train','/home/jacobo/Downloads/mines_multichannel_dataset/labels/train','/home/jacobo/Downloads/mines_multichannel_dataset/images/val','/home/jacobo/Downloads/mines_multichannel_dataset/labels/val')
 
+
+
+    # --- Configuration for visualizing a single tiff image ---
     # Define your main TIFF output directory
     #tiff_data_directory = "/home/jacobo/Downloads/tiff"
 
@@ -50,49 +54,49 @@ if __name__ == '__main__':
 
 
 
-    # --- Configuration for Conversion ---
-    input_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset/'
-    output_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/'
+    # --- Configuration for Conversion from tiff to yolo11 png compatible dataset (this function expects a tiff dataset build by the fuse function)---
+    #input_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset/'
+    #output_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/'
 
-    input_image_subdir = 'images/train'
-    output_image_subdir = 'images/train'  # Keeping same subdirectory structure
+    #input_image_subdir = 'images/train'
+    #output_image_subdir = 'images/train'  # Keeping same subdirectory structure
 
-    input_val_subdir = 'images/val'
-    output_val_subdir = 'images/val'
+    #input_val_subdir = 'images/val'
+    #output_val_subdir = 'images/val'
 
-    # Create output base directory
-    os.makedirs(output_base_dir, exist_ok=True)
+    #convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset(input_base_dir, output_base_dir,input_image_subdir, output_image_subdir,input_val_subdir, output_val_subdir)
 
 
-    # Run conversion for train and val image directories
-    process_and_convert_images(
-        os.path.join(input_base_dir, input_image_subdir),
-        os.path.join(output_base_dir, output_image_subdir)
+    #Straightforward conversion after having organized all the exr files and jpg files into two different directories; where each jpg is associated with it's corresponding exr file having the same names
+
+    # 1. Calculate global min/max log-depth for the entire UNSPLIT dataset
+    # This ensures consistent depth normalization across the final train/val/test splits.
+    print(f"Starting global depth range calculation on all raw images...")
+
+    all_rgb_files = sorted(
+        [f for f in os.listdir('/home/jacobo/Downloads/mines_dataset_old/images/train') if f.lower().endswith(('.jpeg', '.jpg', '.png'))])
+
+    global_min_log_depth, global_max_log_depth = calculate_log_depth_global_min_max(
+        rgb_src_files_list=all_rgb_files,
+        depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files'
     )
-    process_and_convert_images(
-        os.path.join(input_base_dir, input_val_subdir),
-        os.path.join(output_base_dir, output_val_subdir)
+
+
+
+    # 2. Process and Fuse ALL raw RGB/EXR into 4-channel PNGs in a temporary single directory
+    processed_count = process_and_fuse_all_to_png(
+        rgb_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/train',
+        depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files',
+        labels_src_dir='/home/jacobo/Downloads/mines_dataset_old/labels/train',
+        temp_output_base_dir='/home/jacobo/Downloads/test_new_fuse',
+        global_min_log_depth=global_min_log_depth,
+        global_max_log_depth=global_max_log_depth,
+        TARGET_WIDTH=480
     )
 
-    # Assuming labels are in a 'labels' subdirectory parallel to 'images'
-    input_label_dir_train = os.path.join(input_base_dir, 'labels/train')
-    output_label_dir_train = os.path.join(output_base_dir, 'labels/train')
-    os.makedirs(output_label_dir_train, exist_ok=True)
-    for f in os.listdir(input_label_dir_train):
-        if f.endswith('.txt'):
-            os.link(os.path.join(input_label_dir_train, f), os.path.join(output_label_dir_train, f))
-    print(f"Copied labels from {input_label_dir_train} to {output_label_dir_train}")
+    if processed_count == 0:
+        print("No images were processed. Exiting without splitting.")
+        exit()
 
-    input_label_dir_val = os.path.join(input_base_dir, 'labels/val')
-    output_label_dir_val = os.path.join(output_base_dir, 'labels/val')
-    os.makedirs(output_label_dir_val, exist_ok=True)
-    for f in os.listdir(input_label_dir_val):
-        if f.endswith('.txt'):
-            os.link(os.path.join(input_label_dir_val, f), os.path.join(output_label_dir_val, f))
-    print(f"Copied labels from {input_label_dir_val} to {output_label_dir_val}")
-
-    print("Dataset conversion and label copying complete!")
-
-
-
-
+    #3. shuffle and split 80/20
+    split_and_shuffle_dataset('/home/jacobo/Downloads/test_new_fuse/images/train','/home/jacobo/Downloads/test_new_fuse/labels/train','/home/jacobo/Downloads/test_new_fuse/images/val','/home/jacobo/Downloads/test_new_fuse/labels/val')

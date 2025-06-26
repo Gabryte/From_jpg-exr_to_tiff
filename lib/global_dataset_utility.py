@@ -1,6 +1,6 @@
 import shutil
 from PIL import Image # Import Pillow for image processing
-from lib.utility import load_exr_depth
+from lib.utility import load_exr_depth, load_single_channel_exr_map
 import random
 import uuid
 import cv2
@@ -28,6 +28,56 @@ def calculate_global_min_max(rgb_files,DEPTH_FRAMES_DIR):
           global_max_depth = max(global_max_depth, valid_depths.max())
   return global_min_depth, global_max_depth
 
+# --- REFACTORED HELPER FUNCTION FOR THE NEW DIRECT CONVERSION FUNCTION BYPASSING THE TIFF DATASET---
+def calculate_log_depth_global_min_max(rgb_src_files_list, depth_src_dir):
+    """
+    Calculates global min/max of log-transformed depth values across a list of RGB files
+    and their corresponding depth EXR files, without storing all values in memory.
+    """
+    global_min_log_depth = float('inf')  # Initialize with positive infinity
+    global_max_log_depth = float('-inf') # Initialize with negative infinity
+
+    print("\nCalculating global min/max log-depth for consistent normalization...")
+    found_valid_depth = False # Flag to check if any valid depth was found
+
+    for rgb_filename in tqdm(rgb_src_files_list, desc="Scanning depths for global range"):
+        base_filename = os.path.splitext(rgb_filename)[0]
+        depth_filename = f"{base_filename}.exr"
+        depth_path = os.path.join(depth_src_dir, depth_filename)
+
+        if os.path.exists(depth_path):
+            depth_map = load_single_channel_exr_map(depth_path)
+            if depth_map is not None:
+                # Apply log1p transformation
+                log_depth_map = np.log1p(depth_map)
+
+                # Filter out any non-finite values (NaNs, Infs)
+                log_depth_map_finite = log_depth_map[np.isfinite(log_depth_map)]
+
+                if log_depth_map_finite.size > 0:
+                    current_min = log_depth_map_finite.min()
+                    current_max = log_depth_map_finite.max()
+
+                    # Update global min/max
+                    global_min_log_depth = min(global_min_log_depth, current_min)
+                    global_max_log_depth = max(global_max_log_depth, current_max)
+                    found_valid_depth = True # At least one valid depth map processed
+
+    if not found_valid_depth:
+        # Fallback if no valid depths were processed at all
+        print("Warning: No valid log-depth values found across the dataset. Using default 0-1 range for normalization.")
+        global_min_log_depth = 0.0
+        global_max_log_depth = 1.0
+    elif global_min_log_depth == float('inf') or global_max_log_depth == float('-inf'):
+        # This case should ideally be caught by found_valid_depth = False,
+        # but as a failsafe if an entire dataset consists only of filtered-out values.
+        print("Warning: Global min/max values remained at initial infinity/negative infinity. Dataset might contain only invalid depths after filtering. Using default 0-1 range.")
+        global_min_log_depth = 0.0
+        global_max_log_depth = 1.0
+
+
+    print(f"Global Min Log Depth: {global_min_log_depth}, Global Max Log Depth: {global_max_log_depth}")
+    return global_min_log_depth, global_max_log_depth
 
 # --- Modified function for fixed max length  ---
 def calculate_min_depth_with_fixed_max(rgb_files, DEPTH_FRAMES_DIR, fixed_max_depth_value):
@@ -139,8 +189,28 @@ def resize_resolution_maintaining_aspect_ratio(TARGET_WIDTH, IMAGES_PATH):
     print(f"\n--- Image resizing complete! ---")
     print(f"Successfully resized {resized_count} images in '{IMAGES_PATH}'.")
 
+# --- REFACTORED HELPER FUNCTION FOR THE NEW DIRECT CONVERSION FUNCTION BYPASSING THE TIFF DATASET---
+def resize_rgb_and_depth_maintain_aspect_ratio(TARGET_WIDTH, rgb_frame, depth_map):
+    """
+    Resizes RGB and depth frames to a target width while maintaining their original aspect ratio.
+    """
+    original_height, original_width = rgb_frame.shape[0], rgb_frame.shape[1]
 
-def down_grade_resolution_in_four_thirds_with_depths(TARGET_WIDTH, rgb_frame, depth_map):
+    # Calculate target height to maintain aspect ratio
+    target_height = int(original_height * (TARGET_WIDTH / original_width))
+
+    print(f"Resizing to: {TARGET_WIDTH}x{target_height} (maintaining aspect ratio)")
+
+    # Resize RGB (uint8)
+    rgb_frame_resized = cv2.resize(rgb_frame, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_AREA)
+
+    # Resize Depth map (float32)
+    depth_map_resized = cv2.resize(depth_map, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_LINEAR)
+
+    return rgb_frame_resized, depth_map_resized
+
+
+def downgrade_resolution_in_four_thirds_with_depths(TARGET_WIDTH, rgb_frame, depth_map):
     print("Automatically rescale in a 4:3 format...")
     TARGET_HEIGHT = int((TARGET_WIDTH * 4) / 3)
     print(f"New resolution: {TARGET_WIDTH}x{TARGET_HEIGHT}")
@@ -288,7 +358,7 @@ def shuffle_frames_randomly(IMAGES_PATH, LABEL_PATH):
 
 def split_and_shuffle_dataset(TRAIN_PATH, TRAIN_LABEL_PATH, VALIDATION_PATH, VALIDATION_LABEL_PATH):
     """
-    Splits a YOLOv5 dataset into training (80%) and validation (20%) sets.
+    Splits a YOLOv11 dataset into training (80%) and validation (20%) sets.
     It first shuffles the entire dataset (including images without labels)
     to ensure generalization and then moves the validation set images and their
     corresponding labels (if present) to separate directories.
@@ -459,6 +529,9 @@ def process_and_convert_images(input_img_dir, output_img_dir):
 
         except Exception as e:
             print(f"Error processing {input_path}: {e}. Skipping.")
+
+
+
 
 
 

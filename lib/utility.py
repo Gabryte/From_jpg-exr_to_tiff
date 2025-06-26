@@ -35,6 +35,37 @@ def normalize_channel(channel_data, min_val=None, max_val=None, target_range=(0,
         scaled = normalized * (target_range[1] - target_range[0]) + target_range[0]
         return scaled.astype(np.float32)
 
+# --- REFACTORED HELPER FUNCTION FOR THE NEW DIRECT CONVERSION FUNCTION BYPASSING THE TIFF DATASET---
+
+def normalize_array_to_range(data_array, min_val=None, max_val=None, target_range=(0, 1)):
+    """
+    Normalizes a NumPy array to a specified target range [target_min, target_max].
+    If min_val or max_val are not provided, they are calculated from the array itself.
+    Handles empty arrays and cases where min_val == max_val.
+    """
+    if data_array.size == 0:
+        return np.zeros_like(data_array, dtype=np.float32)
+
+    # Ensure finite values for calculation
+    data_array_finite = np.nan_to_num(data_array, nan=0.0, posinf=0.0, neginf=0.0)
+
+    if min_val is None:
+        min_val = data_array_finite.min()
+    if max_val is None:
+        max_val = data_array_finite.max()
+
+    if max_val == min_val:
+        # If all values are the same, map to the middle of the target range or 0
+        return np.full_like(data_array, (target_range[0] + target_range[1]) / 2.0, dtype=np.float32)
+
+    # Scale to 0-1 first
+    normalized = (data_array_finite - min_val) / (max_val - min_val)
+
+    # Then to target_range
+    scale_factor = target_range[1] - target_range[0]
+    scaled = normalized * scale_factor + target_range[0]
+    return np.clip(scaled, target_range[0], target_range[1]).astype(np.float32)
+
 
 def load_exr_depth(exr_path):
     """
@@ -96,6 +127,63 @@ def load_exr_depth(exr_path):
     except Exception as e:
         print(f"Failed to load EXR {exr_path}: {e}")
         return None
+
+
+# --- REFACTORED HELPER FUNCTION FOR THE NEW DIRECT CONVERSION FUNCTION BYPASSING THE TIFF DATASET---
+
+def load_single_channel_exr_map(exr_path):
+    """
+    Loads a single-channel float32 map (e.g., depth) from an EXR file.
+    Prioritizes 'Z', 'depth', etc., but falls back to 'R' if those are not found.
+    Ensures the returned NumPy array is writable and handles NaNs/Infs.
+    """
+    try:
+        exr_file = OpenEXR.InputFile(exr_path)
+        dw = exr_file.header()['dataWindow']
+        size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
+
+        channel_names_priority = ['Z', 'depth', 'Depth', 'z']
+        channel_names_fallback = ['R']
+
+        selected_channel_name = None
+        available_channels = exr_file.header()['channels'].keys()
+
+        # Try to find a recognized depth channel first
+        for channel_name in channel_names_priority:
+            if channel_name in available_channels:
+                selected_channel_name = channel_name
+                break
+
+        # If no priority channel found, try fallback channels
+        if selected_channel_name is None:
+            for channel_name in channel_names_fallback:
+                if channel_name in available_channels:
+                    selected_channel_name = channel_name
+                    break
+
+        if selected_channel_name is None:
+            print(f"Error: No recognized depth channel found in {exr_path}. Available channels: {available_channels}")
+            return None
+
+        data = exr_file.channel(selected_channel_name, Imath.PixelType(Imath.PixelType.FLOAT))
+        img_map_raw = np.frombuffer(data, dtype=np.float32).reshape(size[1], size[0])
+
+        # Make a writable copy
+        img_map = img_map_raw.copy()
+
+        # Handle potential infinite or NaN values
+        img_map[np.isinf(img_map)] = 0  # Set infinite values to 0 (or a suitable max value)
+        img_map[np.isnan(img_map)] = 0  # Set NaN values to 0
+
+        # Optional: Verify if NaNs/Infs were fully handled (for debugging)
+        if np.any(np.isnan(img_map)) or np.any(np.isinf(img_map)):
+            print(f"WARNING: NaNs/Infs still present after cleanup in {exr_path}!")
+
+        return img_map
+    except Exception as e:
+        print(f"Failed to load EXR {exr_path}: {e}")
+        return None
+
 
 def generate_file_hash(filepath, hash_algorithm='md5'):
     """Generates the hash of a file's content."""
