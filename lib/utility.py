@@ -79,7 +79,7 @@ def load_exr_depth(exr_path):
         size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
 
         # Prioritized depth channel names
-        channel_names_priority = ['Z', 'depth', 'Depth', 'z']
+        #channel_names_priority = ['Z', 'depth', 'Depth', 'z']
         # Fallback channel names (e.g., if depth is encoded in Red)
         channel_names_fallback = ['R']
 
@@ -89,12 +89,12 @@ def load_exr_depth(exr_path):
         available_channels = file.header()['channels'].keys()
 
         # Try to find a recognized depth channel first
-        for channel_name in channel_names_priority:
-            if channel_name in available_channels:
-                z_slice = file.channels(channel_name, data_type)[0]
-                depth_data_raw = np.frombuffer(z_slice, dtype=np.float32).reshape(size[1], size[0])
-                print(f"Found depth in channel: '{channel_name}' for {exr_path}")
-                break
+        #for channel_name in channel_names_priority:
+            #if channel_name in available_channels:
+                #z_slice = file.channels(channel_name, data_type)[0]
+                #depth_data_raw = np.frombuffer(z_slice, dtype=np.float32).reshape(size[1], size[0])
+                #print(f"Found depth in channel: '{channel_name}' for {exr_path}")
+                #break
 
         # If no priority channel found, try fallback channels
         if depth_data_raw is None:  # Only enter if no priority channel was found
@@ -133,55 +133,102 @@ def load_exr_depth(exr_path):
 
 def load_single_channel_exr_map(exr_path):
     """
-    Loads a single-channel float32 map (e.g., depth) from an EXR file.
-    Prioritizes 'Z', 'depth', etc., but falls back to 'R' if those are not found.
-    Ensures the returned NumPy array is writable and handles NaNs/Infs.
+    Loads a single-channel floating-point map (e.g., depth, disparity) from an EXR file.
+
+    This function is designed to robustly load depth or similar single-channel
+    data from OpenEXR files. It prioritizes common depth channel names ('Z', 'depth')
+    but can fall back to the 'R' (Red) channel if no explicit depth channel is found.
+    It ensures the loaded NumPy array is writable and handles problematic
+    floating-point values (NaNs and Infs) by converting them to zero.
+
+    Args:
+        exr_path (str): The full path to the EXR file to be loaded.
+
+    Returns:
+        numpy.ndarray or None: A 2D NumPy array of `float32` containing the loaded
+                               channel data if successful. Returns `None` if the
+                               file cannot be loaded, a suitable channel is not found,
+                               or an error occurs during processing.
     """
     try:
+        # 1. Open the EXR file
         exr_file = OpenEXR.InputFile(exr_path)
+
+        # 2. Get data window and calculate image dimensions
+        # 'dataWindow' defines the bounding box of the actual image data within the file.
         dw = exr_file.header()['dataWindow']
+        # Calculate width and height from the data window.
         size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
 
+        # 3. Define channel name priorities for loading
+        # These are common channel names for depth maps in EXR files.
         channel_names_priority = ['Z', 'depth', 'Depth', 'z']
+        # Fallback channels, used if no priority channels are found. 'R' is often
+        # used as the default channel for single-channel grayscale data.
         channel_names_fallback = ['R']
 
-        selected_channel_name = None
+        selected_channel_name = None # Variable to store the name of the channel to be loaded
+        # Get a list of all available channel names in the EXR file's header.
         available_channels = exr_file.header()['channels'].keys()
 
-        # Try to find a recognized depth channel first
+        # 4. Select the best available channel
+        # First, try to find a channel from the high-priority list.
         for channel_name in channel_names_priority:
             if channel_name in available_channels:
                 selected_channel_name = channel_name
-                break
+                break # Found a priority channel, stop searching
 
-        # If no priority channel found, try fallback channels
+        # If no priority channel was found, try the fallback channels.
         if selected_channel_name is None:
             for channel_name in channel_names_fallback:
                 if channel_name in available_channels:
                     selected_channel_name = channel_name
-                    break
+                    break # Found a fallback channel, stop searching
 
+        # If no suitable channel (priority or fallback) was found, print an error and return None.
         if selected_channel_name is None:
-            print(f"Error: No recognized depth channel found in {exr_path}. Available channels: {available_channels}")
+            print(f"Error: No recognized depth or fallback channel found in {exr_path}. "
+                  f"Available channels: {available_channels}")
             return None
 
-        data = exr_file.channel(selected_channel_name, Imath.PixelType(Imath.PixelType.FLOAT))
+        # 5. Read the selected channel data
+        # Define the pixel type for reading (float).
+        pixel_type = Imath.PixelType(Imath.PixelType.FLOAT)
+        # Read the raw byte data for the selected channel.
+        data = exr_file.channel(selected_channel_name, pixel_type)
+        # Convert the raw bytes to a NumPy array of float32 and reshape it
+        # to the correct image dimensions (height, width).
         img_map_raw = np.frombuffer(data, dtype=np.float32).reshape(size[1], size[0])
 
-        # Make a writable copy
+        # 6. Make a writable copy
+        # The `np.frombuffer` operation might return a read-only array.
+        # Creating a copy ensures that subsequent operations (like setting NaNs/Infs to 0)
+        # can modify the array without errors.
         img_map = img_map_raw.copy()
 
-        # Handle potential infinite or NaN values
-        img_map[np.isinf(img_map)] = 0  # Set infinite values to 0 (or a suitable max value)
-        img_map[np.isnan(img_map)] = 0  # Set NaN values to 0
+        # 7. Handle potential infinite or NaN values
+        # Infinite values (positive or negative) can occur in depth maps due to
+        # sensor limitations or invalid measurements (e.g., very distant objects, no data).
+        # We replace them with 0. You might choose a different value based on context
+        # (e.g., a known maximum depth, or average depth).
+        img_map[np.isinf(img_map)] = 0
+        # NaN (Not-a-Number) values also represent invalid data.
+        # We replace them with 0 to ensure numerical stability for further processing.
+        img_map[np.isnan(img_map)] = 0
 
-        # Optional: Verify if NaNs/Infs were fully handled (for debugging)
+        # 8. Optional: Verify if NaNs/Infs were fully handled (for debugging)
+        # This check is useful during development to ensure the cleanup steps are effective.
+        # It prints a warning if any non-finite values unexpectedly remain after the cleanup.
         if np.any(np.isnan(img_map)) or np.any(np.isinf(img_map)):
-            print(f"WARNING: NaNs/Infs still present after cleanup in {exr_path}!")
+            print(f"WARNING: NaNs/Infs still present after cleanup in {exr_path}! "
+                  "This indicates an unexpected issue in data or cleanup logic.")
 
         return img_map
+
     except Exception as e:
-        print(f"Failed to load EXR {exr_path}: {e}")
+        # Catch any exceptions that occur during file opening, reading, or processing.
+        # Print an informative error message and return None to indicate failure.
+        print(f"Failed to load EXR file '{exr_path}': {e}")
         return None
 
 
@@ -197,9 +244,7 @@ def generate_file_hash(filepath, hash_algorithm='md5'):
     return hasher.hexdigest()
 
 
-def get_input_directories():
-   home = os.path.expanduser("~")
-   directories_path = os.path.join(home,"Desktop","Video RGB+D Florence","Annotated")
+def get_input_directories(directories_path):
    subfolders = [f.path for f in os.scandir(directories_path) if f.is_dir()]
    for i,folder in enumerate(subfolders):
        subfolders[i] = os.path.join(folder,"EXR_RGBD")

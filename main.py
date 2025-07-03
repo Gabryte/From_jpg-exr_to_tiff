@@ -1,8 +1,9 @@
 from lib.global_dataset_utility import calculate_global_min_max, split_and_shuffle_dataset, process_and_convert_images, \
-    calculate_log_depth_global_min_max
+    calculate_log_depth_global_min_max, shuffle_frames_randomly
 from lib.fusion_related_functions import find_correct_exr_and_fix_it, \
-    convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png
-from lib.utility import get_input_directories, visualize_multichannel_tiff
+    convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png, \
+    process_and_fuse_all_to_tiff
+from lib.utility import get_input_directories, visualize_multichannel_tiff, check_exr_content
 from lib.utility import find_missing_exr_for_jpg
 from lib.fusion_related_functions import fuse
 from lib.global_dataset_utility import resize_resolution_maintaining_aspect_ratio
@@ -12,20 +13,21 @@ import numpy as np
 import os
 if __name__ == '__main__':
     #Getting all the different directories of the exported images in jpg and exr files, because a single directory contains the extracted frames of a single video from the record 3d app of the iphone 16
-    #array_of_exr_and_jpg_dirs = get_input_directories()
+    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/Annotated')
 
     # --- Configuration needed in order to create a single training rgb dataset that have all of it's corresponding exr files associated via the same name. It's important for the next step of fusion between rgb and exr frames ---
-    #find_correct_exr_and_fix_it("/home/jacobo/Downloads/mines_dataset/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
+    #find_correct_exr_and_fix_it("/home/jacobo/Downloads/mines_dataset_old/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files')
 
     # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
 
-    # --- Configuration in order to create a 4 channel tiff dataset, the result dataset needs to be converted into a png dataset compatible with yolo11 using convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset function---
+    # --- Configuration in order to create a 4 channel tiff dataset, the result dataset needs to be converted into a png dataset compatible with yolo11 using convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset function ---
     #fuse('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files','/home/jacobo/Downloads/mines_dataset/images/tiff',480)
 
 
     # --- Configuration in order to resize rgb images ---
     #resize_resolution_maintaining_aspect_ratio(480,'/home/jacobo/Downloads/mines_dataset/images/train')
+
 
     # --- Configuration for 80/20 shuffling and splitting of a dataset ---
     #split_and_shuffle_dataset('/home/jacobo/Downloads/mines_multichannel_dataset/images/train','/home/jacobo/Downloads/mines_multichannel_dataset/labels/train','/home/jacobo/Downloads/mines_multichannel_dataset/images/val','/home/jacobo/Downloads/mines_multichannel_dataset/labels/val')
@@ -54,7 +56,7 @@ if __name__ == '__main__':
 
 
 
-    # --- Configuration for Conversion from tiff to yolo11 png compatible dataset (this function expects a tiff dataset build by the fuse function)---
+    # --- Configuration for Conversion from tiff to yolo11 png compatible dataset (this function expects a tiff dataset build by the fuse function) ---
     #input_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset/'
     #output_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/'
 
@@ -64,10 +66,10 @@ if __name__ == '__main__':
     #input_val_subdir = 'images/val'
     #output_val_subdir = 'images/val'
 
-    #convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset(input_base_dir, output_base_dir,input_image_subdir, output_image_subdir,input_val_subdir, output_val_subdir)
+    #convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset(input_base_dir, output_base_dir,input_image_subdir, output_image_subdir,input_val_subdir, output_val_subdir,'labels/Test')
 
 
-    #Straightforward conversion after having organized all the exr files and jpg files into two different directories; where each jpg is associated with it's corresponding exr file having the same names
+    #  --- Configuration for straightforward conversion after having organized all the exr files and jpg files into two different directories; where each jpg is associated with it's corresponding exr file having the same names ---
 
     # 1. Calculate global min/max log-depth for the entire UNSPLIT dataset
     # This ensures consistent depth normalization across the final train/val/test splits.
@@ -84,11 +86,22 @@ if __name__ == '__main__':
 
 
     # 2. Process and Fuse ALL raw RGB/EXR into 4-channel PNGs in a temporary single directory
-    processed_count = process_and_fuse_all_to_png(
+    #processed_count = process_and_fuse_all_to_png(
+    #    rgb_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/train',
+    #    depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files',
+    #    labels_src_dir='/home/jacobo/Downloads/mines_dataset_old/labels/train',
+    #    temp_output_base_dir='/home/jacobo/Downloads/test_new_fuse',
+    #    global_min_log_depth=global_min_log_depth,
+    #    global_max_log_depth=global_max_log_depth,
+    #    TARGET_WIDTH=480
+    #)
+
+    # 2.1
+    processed_count = process_and_fuse_all_to_tiff(
         rgb_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/train',
         depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files',
         labels_src_dir='/home/jacobo/Downloads/mines_dataset_old/labels/train',
-        temp_output_base_dir='/home/jacobo/Downloads/test_new_fuse',
+        temp_output_base_dir='/home/jacobo/Downloads/new_train_tiff',
         global_min_log_depth=global_min_log_depth,
         global_max_log_depth=global_max_log_depth,
         TARGET_WIDTH=480
@@ -99,4 +112,41 @@ if __name__ == '__main__':
         exit()
 
     #3. shuffle and split 80/20
-    split_and_shuffle_dataset('/home/jacobo/Downloads/test_new_fuse/images/train','/home/jacobo/Downloads/test_new_fuse/labels/train','/home/jacobo/Downloads/test_new_fuse/images/val','/home/jacobo/Downloads/test_new_fuse/labels/val')
+    split_and_shuffle_dataset('/home/jacobo/Downloads/new_train_tiff/images/train','/home/jacobo/Downloads/new_train_tiff/labels/train','/home/jacobo/Downloads/new_train_tiff/images/val','/home/jacobo/Downloads/new_train_tiff/labels/val')
+
+    # --- Configuration for the shuffling of the test set ---
+    #shuffle_frames_randomly('/home/jacobo/Downloads/test_dataset_rgbd_converted/images/Test','/home/jacobo/Downloads/test_dataset_rgbd_converted/labels/Test')
+
+    # --- Configuration for checking the globals max and mins using the non logP function ---
+    # List all RGB frames (assuming they are named sequentially, e.g., 00000.jpg)
+    #rgb_files_old = sorted([f for f in os.listdir('/home/jacobo/Downloads/mines_dataset_old/images/train') if f.endswith(('.jpeg', '.jpg'))])
+    #rgb_files_for_rgbd = sorted([f for f in os.listdir('/home/jacobo/Downloads/test_dataset_rgbd/images/Test') if f.endswith(('.jpeg', '.jpg'))])
+
+    #min_train,max_train = calculate_global_min_max(rgb_files_old,'/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files/')
+    #min_test,max_test = calculate_global_min_max(rgb_files_for_rgbd, '/home/jacobo/Downloads/test_dataset_rgbd/images/fixed_exr_files/')
+
+
+
+    #print(f"min_train: {min_train}, max_train: {max_train}")
+    #print(f"min_test: {min_test}, max_test: {max_test}")
+
+
+    #check_exr_content('/home/jacobo/Downloads/test_dataset_rgbd/images/fixed_exr_files/0_8.exr')
+
+
+
+    #fuse('/home/jacobo/Downloads/test_dataset_rgbd/images/Test','/home/jacobo/Downloads/test_dataset_rgbd/images/fixed_exr_files','/home/jacobo/Downloads/test_dataset_rgbd/images/tiff',480)
+
+
+    # --- Configuration for Conversion from tiff to yolo11 png compatible dataset (this function expects a tiff dataset build by the fuse function) ---
+    #input_base_dir = '/home/jacobo/Downloads/test_dataset_rgbd/'
+    #output_base_dir = '/home/jacobo/Downloads/test_dataset_rgbd_converted/'
+
+    #input_image_subdir = 'images/tiff'
+    #output_image_subdir = 'images/rgbd'  # Keeping same subdirectory structure
+
+    #input_val_subdir = None
+    #output_val_subdir = None
+
+    #convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset(input_base_dir, output_base_dir,input_image_subdir, output_image_subdir,input_val_subdir, output_val_subdir,'labels/Test')
+
