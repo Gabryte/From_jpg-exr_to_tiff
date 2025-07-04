@@ -11,104 +11,162 @@ from lib.global_dataset_utility import calculate_global_min_max, downgrade_resol
     process_and_convert_images, resize_rgb_and_depth_maintain_aspect_ratio
 
 
-#new function with uint8 for depth that saves in tiff
+# --- Core Conversion Function: Processes and Fuses ALL data into a temp directory ---
 def process_and_fuse_all_to_tiff(rgb_src_dir, depth_src_dir, labels_src_dir, temp_output_base_dir, global_min_log_depth,
                                 global_max_log_depth, TARGET_WIDTH):
     """
-    Processes all raw RGB/EXR pairs, fuses them into 4-channel TIFFs.
-    If a label file is missing, the image is still processed, but no label file is copied.
+    Processes all raw RGB images and corresponding EXR depth maps, fusing them
+    into 4-channel TIFF files (RGB + normalized depth).
+    Optionally, it also copies associated label files.
+
+    The depth map is normalized using a logarithmic scale and global min/max
+    values to ensure consistent scaling across the dataset.
+
+    Args:
+        rgb_src_dir (str): Path to the directory containing raw RGB images (e.g., .jpeg, .jpg, .png).
+        depth_src_dir (str): Path to the directory containing raw depth maps (EXR format).
+        labels_src_dir (str): Path to the directory containing label files (e.g., .txt).
+                               If a label file is missing for an image, the image
+                               will still be processed, but no label will be copied.
+        temp_output_base_dir (str): Base directory where processed TIFF images and
+                                    copied labels will be stored. Subdirectories
+                                    'images/train' and 'labels/train' will be created.
+        global_min_log_depth (float): The global minimum logarithmic depth value
+                                      used for normalizing depth maps. This should
+                                      be pre-calculated from the entire dataset.
+        global_max_log_depth (float): The global maximum logarithmic depth value
+                                      used for normalizing depth maps. This should
+                                      be pre-calculated from the entire dataset.
+        TARGET_WIDTH (int or None): If an integer, all processed images and depth
+                                    maps will be resized to this width while
+                                    maintaining their aspect ratio. If None,
+                                    images will retain their original resolution.
+
+    Returns:
+        int: The number of successfully processed and fused frames.
     """
+    # Define output directories for processed images and labels within the temporary base directory.
+    # These paths are structured to support a typical 'train' dataset split.
     temp_images_dir = os.path.join(temp_output_base_dir, 'images', 'train')
     temp_labels_dir = os.path.join(temp_output_base_dir, 'labels','train')
 
+    # Create the output directories if they don't already exist.
+    # exist_ok=True prevents an error if the directories already exist.
     os.makedirs(temp_images_dir, exist_ok=True)
     os.makedirs(temp_labels_dir, exist_ok=True)
 
+    # Get a sorted list of RGB image filenames from the source directory.
+    # Sorting ensures consistent processing order.
     rgb_files = sorted([f for f in os.listdir(rgb_src_dir) if f.lower().endswith(('.jpeg', '.jpg', '.png'))])
 
+    # Check if any RGB files were found. If not, print a message and exit.
     if not rgb_files:
         print(f"No RGB files found in {rgb_src_dir}. No images to process.")
-        return 0
+        return 0 # Return 0 processed files.
 
     print(f"\nProcessing all raw frames and generating fused multi-channel TIFFs in '{temp_output_base_dir}'...")
-    processed_count = 0
-    for i, rgb_filename in enumerate(tqdm(rgb_files, desc="Fusing and Converting")):
-        base_filename = os.path.splitext(rgb_filename)[0]
-        depth_filename = f"{base_filename}.exr"
-        label_filename = f"{base_filename}.txt"
 
+    processed_count = 0 # Initialize a counter for successfully processed frames.
+
+    # Iterate through each RGB file using tqdm for a progress bar.
+    for i, rgb_filename in enumerate(tqdm(rgb_files, desc="Fusing and Converting")):
+        # Extract the base filename (without extension) to find corresponding depth and label files.
+        base_filename = os.path.splitext(rgb_filename)[0]
+        depth_filename = f"{base_filename}.exr"  # EXR is common for depth maps due to high precision.
+        label_filename = f"{base_filename}.txt"  # Assuming label files are plain text.
+
+        # Construct full paths for the source RGB, depth, and label files.
         rgb_path = os.path.join(rgb_src_dir, rgb_filename)
         depth_path = os.path.join(depth_src_dir, depth_filename)
         label_path = os.path.join(labels_src_dir, label_filename)
 
-        # --- CHANGE 1: Output file extension changed to .tiff ---
+        # Construct full paths for the output TIFF image and label file.
+        # The output image will have a .tiff extension.
         output_tiff_path = os.path.join(temp_images_dir, f"{base_filename}.tiff")
         output_label_path = os.path.join(temp_labels_dir, label_filename)
 
-        # --- Check for RGB and Depth (these are mandatory) ---
+        # --- Check for mandatory input files (RGB and Depth) ---
+        # If an RGB file is missing, skip the current frame and log a message.
         if not os.path.exists(rgb_path):
             print(f"Skipping frame {base_filename}: Missing RGB file: {rgb_path}")
-            continue
+            continue # Move to the next iteration in the loop.
+        # If a Depth file is missing, skip the current frame and log a message.
         if not os.path.exists(depth_path):
             print(f"Skipping frame {base_filename}: Missing Depth file: {depth_path}")
-            continue
+            continue # Move to the next iteration in the loop.
 
-        # --- Check for Label (optional, based on your request) ---
+        # --- Check for optional input file (Label) ---
+        # Determine if the label file exists. This flag will be used later.
         label_exists = os.path.exists(label_path)
         if not label_exists:
+            # Log a warning if the label file is not found, but continue processing the image.
             print(f"Warning: Label file not found for {base_filename}. Image will be processed, but no label copied.")
 
-        # Load RGB frame
+        # Load RGB frame using OpenCV.
+        # cv2.imread loads images as BGR by default.
         rgb_frame = cv2.imread(rgb_path)
         if rgb_frame is None:
             print(f"Error loading RGB frame {rgb_path}. Skipping.")
             continue
+        # Convert RGB frame from BGR to RGB color space, as typically expected.
         rgb_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2RGB)
 
-        # Load Depth map
+        # Load Depth map using a custom helper function (load_single_channel_exr_map).
+        # This function is expected to handle EXR specifics and return a single-channel float map.
         depth_map = load_single_channel_exr_map(depth_path)
         if depth_map is None:
             print(f"Error loading/processing depth for frame {depth_path}. Skipping.")
             continue
 
-        # Resize if TARGET_WIDTH is specified
+        # Resize RGB and Depth if TARGET_WIDTH is specified.
+        # This maintains aspect ratio and resizes both images consistently.
         if TARGET_WIDTH:
             rgb_frame, depth_map = resize_rgb_and_depth_maintain_aspect_ratio(
                 TARGET_WIDTH=TARGET_WIDTH, rgb_frame=rgb_frame, depth_map=depth_map
             )
         else:
+            # If no target width, ensure depth map matches RGB dimensions in case of discrepancy.
             H, W, _ = rgb_frame.shape
             if depth_map.shape != (H, W):
+                # Resize depth map to match RGB dimensions using linear interpolation.
                 depth_map = cv2.resize(depth_map, (W, H), interpolation=cv2.INTER_LINEAR)
 
-        # Normalize depth
-        log_depth_map = np.log1p(depth_map)
+        # Normalize depth map using a logarithmic transformation and global min/max values.
+        # This makes the depth values more uniformly distributed and robust to outliers.
+        log_depth_map = np.log1p(depth_map) # Applies log(1 + x) to handle zero or small depth values.
         normalized_depth_float = normalize_array_to_range(
             log_depth_map,
             min_val=global_min_log_depth,
             max_val=global_max_log_depth,
-            target_range=(0, 1)
+            target_range=(0, 1) # Normalize to a [0, 1] float range.
         )
 
+        # Convert the normalized float depth to an 8-bit unsigned integer (0-255).
+        # This is suitable for image formats that store pixel values in 8-bit.
         depth_uint8 = np.clip((normalized_depth_float * 255.0), 0, 255).astype(np.uint8)
+
+        # Convert the RGB frame back to BGR for OpenCV's imwrite function.
         rgb_uint8_bgr = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+        # Expand dimensions of the 8-bit depth map to (Height, Width, 1) to allow concatenation.
         depth_uint8_hwc = np.expand_dims(depth_uint8, axis=2)
 
+        # Concatenate the BGR RGB channels with the single depth channel.
+        # This creates a 4-channel image (B, G, R, Depth).
         final_4ch_img_uint8_hwc = np.concatenate((rgb_uint8_bgr, depth_uint8_hwc), axis=2)
 
-        # --- CHANGE 2: Save as TIFF using the new path ---
+        # Save the 4-channel image as a TIFF file. TIFF supports multi-channel images.
         cv2.imwrite(output_tiff_path, final_4ch_img_uint8_hwc)
 
-        # --- Conditionally copy label file ---
+        # Conditionally copy the label file if it exists.
         if label_exists:
-            shutil.copy2(label_path, output_label_path)
+            shutil.copy2(label_path, output_label_path) # copy2 preserves metadata.
 
-        processed_count += 1
+        processed_count += 1 # Increment the counter for successfully processed frames.
 
     print(f"Finished fusing and converting {processed_count} frames to TIFFs.")
-    return processed_count
+    return processed_count # Return the total count of processed frames.
 
-# --- Core Conversion Function: Processes and Fuses ALL data into a temp directory ---
+# --- Old and not working for saving the best.pt in 4 channel format
 def process_and_fuse_all_to_png(rgb_src_dir, depth_src_dir, labels_src_dir, temp_output_base_dir, global_min_log_depth,
                                 global_max_log_depth,TARGET_WIDTH):
     """

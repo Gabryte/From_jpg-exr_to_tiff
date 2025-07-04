@@ -38,7 +38,7 @@ def calculate_log_depth_global_min_max(rgb_src_files_list, depth_src_dir):
     corresponding depth EXR file paths, loads each EXR, applies a log1p
     transformation, and then finds the true minimum and maximum values
     across all valid (finite) pixels in all processed depth maps.
-    It does so efficiently by updating global min/max without storing
+    It does it by updating global min/max without storing
     all log-depth values in memory, making it suitable for large datasets.
 
     Args:

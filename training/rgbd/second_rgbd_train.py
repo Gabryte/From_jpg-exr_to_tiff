@@ -11,7 +11,7 @@ import tempfile  # Import tempfile for creating temporary files
 
 
 def main():
-    print("--- Script new_final_train.py started ---")  # Add this line to confirm execution of THIS script
+    print("--- Script new_final_train.py started ---")
 
     # --- Process ID (PID) Logging ---
     pid = os.getpid()
@@ -143,8 +143,7 @@ def main():
         #    except Exception as e:
         #        print(f"Warning: Could not load weights from {resume_checkpoint_path} or adapt them. Some weights might not be loaded. Error: {e}")
         # else:
-        print(
-            f"Skipping resume checkpoint loading. Starting training with randomly initialized or default Yolo11s 4-channel weights based on yolo11s.yaml.")
+        #print(f"Skipping resume checkpoint loading. Starting training with randomly initialized or default Yolo11s 4-channel weights based on yolo11s.yaml.")
 
         # Verify again before training starts
         if hasattr(model.model.model[0], 'conv'):

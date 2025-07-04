@@ -12,20 +12,23 @@ import Imath
 import numpy as np
 import os
 if __name__ == '__main__':
-    #Getting all the different directories of the exported images in jpg and exr files, because a single directory contains the extracted frames of a single video from the record 3d app of the iphone 16
-    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/Annotated')
 
-    # --- Configuration needed in order to create a single training rgb dataset that have all of it's corresponding exr files associated via the same name. It's important for the next step of fusion between rgb and exr frames ---
+
+    # --- Configuration needed in order to create a single training rgb dataset that have all of it's corresponding exr files associated via the same name. It's essential for the next step of fusion between rgb and exr frames ---
+
+    #Getting all the different directories of the exported images in jpg and exr files. This process is mandatory in order to get an array of paths, where each of them points to the directory that contains two subfolders: depth and rgb (automatically produced by the Record3D app when exporting in jpg and exr)
+    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/')
+
     #find_correct_exr_and_fix_it("/home/jacobo/Downloads/mines_dataset_old/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files')
 
     # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
 
-    # --- Configuration in order to create a 4 channel tiff dataset, the result dataset needs to be converted into a png dataset compatible with yolo11 using convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset function ---
+    # --- Configuration of the old fuse function (it produces tiff images in a format that yolo don't understand) ---
     #fuse('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files','/home/jacobo/Downloads/mines_dataset/images/tiff',480)
 
 
-    # --- Configuration in order to resize rgb images ---
+    # --- Configuration in order to resize images ---
     #resize_resolution_maintaining_aspect_ratio(480,'/home/jacobo/Downloads/mines_dataset/images/train')
 
 
@@ -34,7 +37,7 @@ if __name__ == '__main__':
 
 
 
-    # --- Configuration for visualizing a single tiff image ---
+    # --- Configuration for visualizing a single tiff image with depths in float32 (this function expects tiff images produced by the old fuse() function) ---
     # Define your main TIFF output directory
     #tiff_data_directory = "/home/jacobo/Downloads/tiff"
 
@@ -56,7 +59,7 @@ if __name__ == '__main__':
 
 
 
-    # --- Configuration for Conversion from tiff to yolo11 png compatible dataset (this function expects a tiff dataset build by the fuse function) ---
+    # --- Configuration for Conversion from tiff to yolo11 png incompatible dataset (this function expects a tiff dataset build by the fuse function) ---
     #input_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset/'
     #output_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/'
 
@@ -85,7 +88,7 @@ if __name__ == '__main__':
 
 
 
-    # 2. Process and Fuse ALL raw RGB/EXR into 4-channel PNGs in a temporary single directory
+    # 2. Process and Fuse ALL raw RGB/EXR into 4-channel PNGs <- it works for the 4 channel training session but yolo11 doesn't save the best.pt with 4 channels, so it's useless
     #processed_count = process_and_fuse_all_to_png(
     #    rgb_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/train',
     #    depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files',
@@ -96,7 +99,7 @@ if __name__ == '__main__':
     #    TARGET_WIDTH=480
     #)
 
-    # 2.1
+    # 2.1 Process and Fuse ALL raw RGB/EXR into 4-channel TIFFs <- it works either for the 4 channel training and for the saving of the best.pt in 4 channel format
     processed_count = process_and_fuse_all_to_tiff(
         rgb_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/train',
         depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files',
@@ -130,23 +133,5 @@ if __name__ == '__main__':
     #print(f"min_train: {min_train}, max_train: {max_train}")
     #print(f"min_test: {min_test}, max_test: {max_test}")
 
-
+    # --- Configuration for checking the content of an exr file
     #check_exr_content('/home/jacobo/Downloads/test_dataset_rgbd/images/fixed_exr_files/0_8.exr')
-
-
-
-    #fuse('/home/jacobo/Downloads/test_dataset_rgbd/images/Test','/home/jacobo/Downloads/test_dataset_rgbd/images/fixed_exr_files','/home/jacobo/Downloads/test_dataset_rgbd/images/tiff',480)
-
-
-    # --- Configuration for Conversion from tiff to yolo11 png compatible dataset (this function expects a tiff dataset build by the fuse function) ---
-    #input_base_dir = '/home/jacobo/Downloads/test_dataset_rgbd/'
-    #output_base_dir = '/home/jacobo/Downloads/test_dataset_rgbd_converted/'
-
-    #input_image_subdir = 'images/tiff'
-    #output_image_subdir = 'images/rgbd'  # Keeping same subdirectory structure
-
-    #input_val_subdir = None
-    #output_val_subdir = None
-
-    #convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset(input_base_dir, output_base_dir,input_image_subdir, output_image_subdir,input_val_subdir, output_val_subdir,'labels/Test')
-
