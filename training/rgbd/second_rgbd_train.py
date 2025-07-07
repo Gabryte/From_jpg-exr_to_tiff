@@ -8,11 +8,11 @@ from ultralytics.nn.tasks import parse_model
 import wandb
 import yaml
 import tempfile  # Import tempfile for creating temporary files
+import comet_ml
 
 
 def main():
-    print("--- Script new_final_train.py started ---")
-
+    print("--- Script new_final_train.py started ---")  # Add this line to confirm execution of THIS script
     # --- Process ID (PID) Logging ---
     pid = os.getpid()
     pid_file_path = "train_yolo.pid"
@@ -23,50 +23,49 @@ def main():
     except Exception as e:
         print(f"Warning: Could not log PID to file {pid_file_path}: {e}")
 
-    # --- Weights & Biases Login ---
+    # --- Comet ml  Login ---
     try:
-        wandb.login(key="227c627e46f1304300a2db89449a57e7434e8426")
-        print("Successfully logged into Weights & Biases.")
+        comet_ml.login(project_name="mines_rgbd_train")
+        print("Successfully logged into comet_ml.")
     except Exception as e:
-        print(f"Failed to log into Weights & Biases: {e}")
-        print("Please ensure your API key is correct or run 'wandb login' in your terminal.")
+        print(f"Failed to log into Comet ml: {e}")
+        print("Please ensure your API key is correct.")
         sys.exit(1)
 
-    temp_yaml_file = None  # Initialize to None for cleanup in finally block
     try:
-        #model_yaml_path = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/yolo11s.yaml'  # Your base YAML file
-        resume_checkpoint_path = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/my_yolo_train/fifth_attempt_rgbd_train_converted_pngs2/weights/best.pt'
-        #model_pt = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/yolo11s.pt'
+        # model_yaml_path = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/yolo11s.yaml'  # Your base YAML file
+        resume_checkpoint_path = '/home/jacobo/dataset/new_train_tiff/my_yolo_train/mines_rgbd_train/weights/last.pt'
+        # model_pt = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/yolo11s.pt'
 
-    # --- On-the-fly modification of model_config for 4 channels ---
-        #print(f"Loading base model architecture from {model_yaml_path}...")
-        #model_config={
-                    # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-                    # Ultralytics YOLO11 object detection model with P3/8 - P5/32 outputs
-                    # Model docs: https://docs.ultralytics.com/models/yolo11
-                    # Task docs: https://docs.ultralytics.com/tasks/detect
+        # --- On-the-fly modification of model_config for 4 channels ---
+        # print(f"Loading base model architecture from {model_yaml_path}...")
+        # model_config={
+        # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+        # Ultralytics YOLO11 object detection model with P3/8 - P5/32 outputs
+        # Model docs: https://docs.ultralytics.com/models/yolo11
+        # Task docs: https://docs.ultralytics.com/tasks/detect
 
-                    # Parameters
-          #  'nc': 4, # number of classes
-          #  'ch': 4,
-          #  'depth_multiple': 0.50, # model depth multiple for 's' scale
-          #  'width_multiple': 0.50, # layer channel multiple for 's' scale
-          #  'scales': {'s':[0.50, 0.50, 1024]}, # model compound scaling constants, i.e. 'model=yolo11n.yaml' will call yolo11.yaml with scale 'n'
-              # [depth, width, max_channels]
-              #n: [0.50, 0.25, 1024] # summary: 181 layers, 2624080 parameters, 2624064 gradients, 6.6 GFLOPs
-              # summary: 181 layers, 9458752 parameters, 9458736 gradients, 21.7 GFLOPs
-              #m: [0.50, 1.00, 512] # summary: 231 layers, 20114688 parameters, 20114672 gradients, 68.5 GFLOPs
-              #l: [1.00, 1.00, 512] # summary: 357 layers, 25372160 parameters, 25372144 gradients, 87.6 GFLOPs
-              #x: [1.00, 1.50, 512] # summary: 357 layers, 56966176 parameters, 56966160 gradients, 196.0 GFLOPs
+        # Parameters
+        #  'nc': 4, # number of classes
+        #  'ch': 4,
+        #  'depth_multiple': 0.50, # model depth multiple for 's' scale
+        #  'width_multiple': 0.50, # layer channel multiple for 's' scale
+        #  'scales': {'s':[0.50, 0.50, 1024]}, # model compound scaling constants, i.e. 'model=yolo11n.yaml' will call yolo11.yaml with scale 'n'
+        # [depth, width, max_channels]
+        # n: [0.50, 0.25, 1024] # summary: 181 layers, 2624080 parameters, 2624064 gradients, 6.6 GFLOPs
+        # summary: 181 layers, 9458752 parameters, 9458736 gradients, 21.7 GFLOPs
+        # m: [0.50, 1.00, 512] # summary: 231 layers, 20114688 parameters, 20114672 gradients, 68.5 GFLOPs
+        # l: [1.00, 1.00, 512] # summary: 357 layers, 25372160 parameters, 25372144 gradients, 87.6 GFLOPs
+        # x: [1.00, 1.50, 512] # summary: 357 layers, 56966176 parameters, 56966160 gradients, 196.0 GFLOPs
 
-            # YOLO11n backbone
-         #   'backbone': [[-1, 1, 'Conv', [64, 3, 2]],[-1, 1, 'Conv', [128, 3, 2]],[-1, 2, 'C3k2', [256, False, 0.25]],[-1, 1, 'Conv', [256, 3, 2]],[-1, 2, 'C3k2', [512, False, 0.25]],[-1, 1, 'Conv', [512, 3, 2]],[-1, 2, 'C3k2', [512, True]],[-1, 1, 'Conv', [1024, 3, 2]],[-1, 2, 'C3k2', [1024, True]],[-1, 1, 'SPPF', [1024, 5]],[-1, 2, 'C2PSA', [1024]]],
-            # YOLO11n head
-         #   'head': [[-1, 1, 'nn.Upsample', [None, 2, "nearest"]],[[-1, 6], 1, 'Concat', [1]],[-1, 2, 'C3k2', [512, False]],[-1, 1, 'nn.Upsample', [None, 2, "nearest"]],[[-1, 4], 1, 'Concat', [1]],[-1, 2, 'C3k2', [256, False]],[-1, 1, 'Conv', [256, 3, 2]],[[-1, 13], 1, 'Concat', [1]],[-1, 2, 'C3k2', [512, False]],[-1, 1, 'Conv', [512, 3, 2]],[[-1, 10], 1, 'Concat', [1]],[-1, 2, 'C3k2', [1024, True]],[[16, 19, 22], 1, 'Detect', ['nc']]]
-        #}
+        # YOLO11n backbone
+        #   'backbone': [[-1, 1, 'Conv', [64, 3, 2]],[-1, 1, 'Conv', [128, 3, 2]],[-1, 2, 'C3k2', [256, False, 0.25]],[-1, 1, 'Conv', [256, 3, 2]],[-1, 2, 'C3k2', [512, False, 0.25]],[-1, 1, 'Conv', [512, 3, 2]],[-1, 2, 'C3k2', [512, True]],[-1, 1, 'Conv', [1024, 3, 2]],[-1, 2, 'C3k2', [1024, True]],[-1, 1, 'SPPF', [1024, 5]],[-1, 2, 'C2PSA', [1024]]],
+        # YOLO11n head
+        #   'head': [[-1, 1, 'nn.Upsample', [None, 2, "nearest"]],[[-1, 6], 1, 'Concat', [1]],[-1, 2, 'C3k2', [512, False]],[-1, 1, 'nn.Upsample', [None, 2, "nearest"]],[[-1, 4], 1, 'Concat', [1]],[-1, 2, 'C3k2', [256, False]],[-1, 1, 'Conv', [256, 3, 2]],[[-1, 13], 1, 'Concat', [1]],[-1, 2, 'C3k2', [512, False]],[-1, 1, 'Conv', [512, 3, 2]],[[-1, 10], 1, 'Concat', [1]],[-1, 2, 'C3k2', [1024, True]],[[16, 19, 22], 1, 'Detect', ['nc']]]
+        # }
         # Load the YAML configuration
-        #with open('yolo11s-4ch.yaml', 'w') as f:
-            #yaml.dump(model_config, f)
+        # with open('yolo11s-4ch.yaml', 'w') as f:
+        # yaml.dump(model_config, f)
 
         model = YOLO(resume_checkpoint_path)
         model.model.yaml['ch'] = 4
@@ -79,39 +78,39 @@ def main():
         # --- End of on-the-fly modification ---
 
         # IMPORTANT: Print nc and ch values AFTER modification
-        #nc_after_mod = model_config.get('nc', 'Not Found')
-        #ch_after_mod = model_config.get('ch', 'Not Found')
-        #print(f"Debug: 'nc' value after script modification: {nc_after_mod}")
-        #print(f"Debug: 'ch' value after script modification: {ch_after_mod}")
+        # nc_after_mod = model_config.get('nc', 'Not Found')
+        # ch_after_mod = model_config.get('ch', 'Not Found')
+        # print(f"Debug: 'nc' value after script modification: {nc_after_mod}")
+        # print(f"Debug: 'ch' value after script modification: {ch_after_mod}")
 
         # Create a temporary YAML file to pass to YOLO constructor
-        #with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as temp_f:
-            #yaml.dump(model_config, temp_f)
-            #temp_yaml_file = temp_f.name  # Store the name for cleanup
+        # with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as temp_f:
+        # yaml.dump(model_config, temp_f)
+        # temp_yaml_file = temp_f.name  # Store the name for cleanup
 
         # --- Debug: Print content of temporary YAML file ---
-        #print(f"Debug: Content of temporary YAML file ({temp_yaml_file}):")
-        #with open(temp_yaml_file, 'r') as f:
-            #print(f.read())
-        #print("-" * 50)
+        # print(f"Debug: Content of temporary YAML file ({temp_yaml_file}):")
+        # with open(temp_yaml_file, 'r') as f:
+        # print(f.read())
+        # print("-" * 50)
 
         # Initialize the YOLO model from the temporary YAML file
         # model = YOLO(temp_yaml_file)
-        #print(f"Debug: Initialized YOLO model from {temp_yaml_file} with potentially modified 'ch'.")
+        # print(f"Debug: Initialized YOLO model from {temp_yaml_file} with potentially modified 'ch'.")
 
         # Add a print statement to see the model's reported nc immediately after initialization
-        #if hasattr(model.model, 'nc'):
-            #print(f"Debug: Model.model.nc after initialization: {model.model.nc}")
-        #elif hasattr(model.model.model[-1], 'nc'):
-            #print(f"Debug: Model.model.model[-1].nc after initialization: {model.model.model[-1].nc}")
-        #else:
-            #print("Debug: nc attribute not found directly on model.model or its last layer after initialization.")
+        # if hasattr(model.model, 'nc'):
+        # print(f"Debug: Model.model.nc after initialization: {model.model.nc}")
+        # elif hasattr(model.model.model[-1], 'nc'):
+        # print(f"Debug: Model.model.model[-1].nc after initialization: {model.model.model[-1].nc}")
+        # else:
+        # print("Debug: nc attribute not found directly on model.model or its last layer after initialization.")
 
-        #if hasattr(model.model.model[0], 'conv'):
-            # This is the most crucial verification point for input channels
-            #print(f"Verified: Model's first conv layer now expects {model.model.model[0].conv.in_channels} input channels.")
-        #else:
-            #print("Warning: Could not verify first conv layer after parsing model from YAML.")
+        # if hasattr(model.model.model[0], 'conv'):
+        # This is the most crucial verification point for input channels
+        # print(f"Verified: Model's first conv layer now expects {model.model.model[0].conv.in_channels} input channels.")
+        # else:
+        # print("Warning: Could not verify first conv layer after parsing model from YAML.")
 
         # --- Attempt to load weights from the resume checkpoint ---
         # Temporarily disable checkpoint loading to diagnose 'nc' issue
@@ -143,7 +142,8 @@ def main():
         #    except Exception as e:
         #        print(f"Warning: Could not load weights from {resume_checkpoint_path} or adapt them. Some weights might not be loaded. Error: {e}")
         # else:
-        #print(f"Skipping resume checkpoint loading. Starting training with randomly initialized or default Yolo11s 4-channel weights based on yolo11s.yaml.")
+        # print(
+        # f"Skipping resume checkpoint loading. Starting training with randomly initialized or default Yolo11s 4-channel weights based on yolo11s.yaml.")
 
         # Verify again before training starts
         if hasattr(model.model.model[0], 'conv'):
@@ -158,13 +158,6 @@ def main():
             print(f"Debug: Detect layer (model.model.model[-1]) reports 'nc': {model.model.model[-1].nc}")
         else:
             print("Debug: Could not find or inspect 'nc' attribute on the Detect layer.")
-
-        # --- Weights & Biases Run Initialization ---
-        run = wandb.init(project="my_yolo_train", name="fifth_attempt_rgbd_train_converted_pngs_new_run_3",
-                         resume="allow")
-
-        print("Starting YOLO training with the following configuration:")
-        print("-" * 50)
 
         # --- Train the model ---
         model.train(
@@ -212,46 +205,15 @@ def main():
             auto_augment=False,
             project='my_yolo_train',
             name='mines_rgbd_train',
-            resume=False,
+            resume=True,
             pretrained=True
         )
         print("-" * 50)
         print("YOLO training completed successfully!")
 
-        # --- Log results.csv and results.json as Artifacts ---
-        run_save_dir = Path(model.trainer.save_dir) if hasattr(model, 'trainer') and hasattr(model.trainer,
-                                                                                             'save_dir') else None
-        if run_save_dir and run_save_dir.exists():
-            print(f"Attempting to save results.csv and results.json from: {run_save_dir}")
-            results_csv_path = run_save_dir / "results.csv"
-            results_json_path = run_save_dir / "results.json"
-
-            if results_csv_path.is_file():
-                results_artifact = wandb.Artifact(
-                    name="yolo_training_results",
-                    type="results",
-                    description="Ultralytics YOLO training results CSV and JSON"
-                )
-                results_artifact.add_file(str(results_csv_path))
-                if results_json_path.is_file():
-                    results_artifact.add_file(str(results_json_path))
-                run.log_artifact(results_artifact)
-                print("results.csv and results.json logged as W&B Artifact.")
-            else:
-                print(f"Warning: results.csv not found at {results_csv_path}. Cannot log as Artifact.")
-        else:
-            print("Warning: Could not determine run save directory. Cannot log results files as Artifacts.")
-
-        wandb.finish()
-
     except Exception as e:
         print(f"An error occurred during training: {e}", file=sys.stderr)
         sys.exit(1)
-    finally:
-        # Clean up the temporary YAML file
-        if temp_yaml_file and os.path.exists(temp_yaml_file):
-            os.remove(temp_yaml_file)
-            print(f"Cleaned up temporary YAML file: {temp_yaml_file}")
 
 
 if __name__ == "__main__":
