@@ -59,5 +59,24 @@ Procedure to obtain the Yolo 4 channels tiff dataset (the following code is alre
   
       #3. shuffle and split 80/20
       split_and_shuffle_dataset('/home/jacobo/Downloads/new_train_tiff/images/train','/home/jacobo/Downloads/new_train_tiff/labels/train','/home/jacobo/Downloads/new_train_tiff/images/val','/home/jacobo/Downloads/new_train_tiff/labels/val')
+      #3.1 IMPORTANT Alternatively you can use this function in order to split with custom percentages train val and test
+      # Example Usage:
+        
+      # Define your paths (assuming they exist or the script will create them for non-zero percentages)
+      #train_images_dir = "datasets/my_yolo_dataset/images/train"
+      #train_labels_dir = "datasets/my_yolo_dataset/labels/train"
+      #val_images_dir = "datasets/my_yolo_dataset/images/val"
+      #val_labels_dir = "datasets/my_yolo_dataset/labels/val"
+      #test_images_dir = "datasets/my_yolo_dataset/images/test"
+      #test_labels_dir = "datasets/my_yolo_dataset/labels/test"
+    
+      # Example: 80-10-10 split
+      #print("\n--- Running 80-10-10 split ---")
+      #split_dataset_arbitrary_percentages(
+      #    train_images_dir, train_labels_dir,
+      #    val_images_dir, val_labels_dir,
+      #    test_images_dir, test_labels_dir,
+      #    train_percentage=80, val_percentage=10, test_percentage=10
+      #)
     ```
 

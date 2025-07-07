@@ -1,5 +1,5 @@
 from lib.global_dataset_utility import calculate_global_min_max, split_and_shuffle_dataset, process_and_convert_images, \
-    calculate_log_depth_global_min_max, shuffle_frames_randomly
+    calculate_log_depth_global_min_max, shuffle_frames_randomly, split_dataset_arbitrary_percentages
 from lib.fusion_related_functions import find_correct_exr_and_fix_it, \
     convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png, \
     process_and_fuse_all_to_tiff
@@ -114,10 +114,29 @@ if __name__ == '__main__':
         print("No images were processed. Exiting without splitting.")
         exit()
 
-    #3. shuffle and split 80/20
+    #3. shuffle and split 80/20 only train and val
     split_and_shuffle_dataset('/home/jacobo/Downloads/new_train_tiff/images/train','/home/jacobo/Downloads/new_train_tiff/labels/train','/home/jacobo/Downloads/new_train_tiff/images/val','/home/jacobo/Downloads/new_train_tiff/labels/val')
+    #3.1 IMPORTANT Alternatively you can use this function in order to split with custom percentages train val and test
+    # Example Usage:
 
-    # --- Configuration for the shuffling of the test set ---
+    # Define your paths (assuming they exist or the script will create them for non-zero percentages)
+    #train_images_dir = "datasets/my_yolo_dataset/images/train"
+    #train_labels_dir = "datasets/my_yolo_dataset/labels/train"
+    #val_images_dir = "datasets/my_yolo_dataset/images/val"
+    #val_labels_dir = "datasets/my_yolo_dataset/labels/val"
+    #test_images_dir = "datasets/my_yolo_dataset/images/test"
+    #test_labels_dir = "datasets/my_yolo_dataset/labels/test"
+
+    # Example: 80-10-10 split
+    #print("\n--- Running 80-10-10 split ---")
+    #split_dataset_arbitrary_percentages(
+    #    train_images_dir, train_labels_dir,
+    #    val_images_dir, val_labels_dir,
+    #    test_images_dir, test_labels_dir,
+    #    train_percentage=80, val_percentage=10, test_percentage=10
+    #)
+
+    # --- Configuration for the shuffling of the test set (use it only if you have prepared the dataset with train val and not test)---
     #shuffle_frames_randomly('/home/jacobo/Downloads/test_dataset_rgbd_converted/images/Test','/home/jacobo/Downloads/test_dataset_rgbd_converted/labels/Test')
 
     # --- Configuration for checking the globals max and mins using the non logP function ---

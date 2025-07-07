@@ -597,7 +597,246 @@ def process_and_convert_images(input_img_dir, output_img_dir):
             print(f"Error processing {input_path}: {e}. Skipping.")
 
 
+def split_dataset_arbitrary_percentages(
+    TRAIN_PATH, TRAIN_LABEL_PATH,
+    VALIDATION_PATH, VALIDATION_LABEL_PATH,
+    TEST_PATH, TEST_LABEL_PATH,
+    train_percentage, val_percentage, test_percentage
+):
+    """
+    Splits a YOLOv11 dataset into training, validation, and testing sets based on arbitrary percentages.
+    It first shuffles the entire dataset (including images without labels)
+    to ensure generalization and then moves the validation and test set images and their
+    corresponding labels (if present) to separate directories.
 
+    Args:
+        TRAIN_PATH (str): The path to the directory containing the initial full training images.
+        TRAIN_LABEL_PATH (str): The path to the directory containing the initial full training labels.
+        VALIDATION_PATH (str): The path to the (initially empty) directory for validation images.
+        VALIDATION_LABEL_PATH (str): The path to the (initially empty) directory for validation labels.
+        TEST_PATH (str): The path to the (initially empty) directory for testing images.
+        TEST_LABEL_PATH (str): The path to the (initially empty) directory for testing labels.
+        train_percentage (int or float): Percentage for the training set (e.g., 80 for 80%).
+        val_percentage (int or float): Percentage for the validation set (e.g., 10 for 10%).
+        test_percentage (int or float): Percentage for the testing set (e.g., 10 for 10%).
+    """
+    # 1. Validate input percentages
+    if not all(isinstance(p, (int, float)) and 0 <= p <= 100 for p in [train_percentage, val_percentage, test_percentage]):
+        print("Error: Percentages must be numbers between 0 and 100.")
+        return
+
+    total_percentage = train_percentage + val_percentage + test_percentage
+    if not (99.9 <= total_percentage <= 100.1): # Allow for floating point inaccuracies
+        print(f"Error: The sum of percentages must be approximately 100%. Current sum: {total_percentage:.2f}%.")
+        return
+
+    # Convert percentages to ratios
+    train_ratio = train_percentage / 100.0
+    val_ratio = val_percentage / 100.0
+    test_ratio = test_percentage / 100.0
+
+    # 2. Validate paths
+    if not os.path.isdir(TRAIN_PATH):
+        print(f"Error: TRAIN_PATH '{TRAIN_PATH}' does not exist or is not a directory.")
+        return
+    if not os.path.isdir(TRAIN_LABEL_PATH):
+        print(f"Error: TRAIN_LABEL_PATH '{TRAIN_LABEL_PATH}' does not exist or is not a directory.")
+        return
+
+    # Ensure validation and test directories exist (create if not)
+    # Only create if the percentage for that split is > 0
+    if val_percentage > 0:
+        os.makedirs(VALIDATION_PATH, exist_ok=True)
+        os.makedirs(VALIDATION_LABEL_PATH, exist_ok=True)
+    if test_percentage > 0:
+        os.makedirs(TEST_PATH, exist_ok=True)
+        os.makedirs(TEST_LABEL_PATH, exist_ok=True)
+
+    # 3. Initial shuffle of the entire dataset within the TRAIN_PATH and TRAIN_LABEL_PATH
+    print("\n--- Step 1: Shuffling the entire dataset in TRAIN_PATH and TRAIN_LABEL_PATH ---")
+    shuffle_frames_randomly(TRAIN_PATH, TRAIN_LABEL_PATH)
+    print("Initial dataset shuffling complete. Files are now sequentially named and randomized.")
+
+    # 4. Re-gather files after shuffling and renaming to get the new, consistent names
+    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
+
+    all_image_files = []
+    for f in os.listdir(TRAIN_PATH):
+        full_path = os.path.join(TRAIN_PATH, f)
+        if os.path.isfile(full_path) and f.lower().endswith(image_extensions):
+            if f.startswith('.'):
+                continue
+            all_image_files.append(f)
+
+    all_label_files_in_dir = [f for f in os.listdir(TRAIN_LABEL_PATH) if
+                              os.path.isfile(os.path.join(TRAIN_LABEL_PATH, f)) and f.lower().endswith('.txt')]
+    labels_dict = {os.path.splitext(f)[0]: f for f in all_label_files_in_dir}
+
+    all_files_for_split = []
+    for img_file in all_image_files:
+        base_name_without_ext = os.path.splitext(img_file)[0]
+        corresponding_label_file = labels_dict.get(base_name_without_ext)
+        all_files_for_split.append((img_file, corresponding_label_file))
+
+    if not all_files_for_split:
+        print("No image files found after initial shuffle. Cannot proceed with split.")
+        return
+
+    # 5. Shuffle the combined list to ensure random distribution for the split
+    random.shuffle(all_files_for_split)
+
+    print(f"\nFound {len(all_files_for_split)} image files (some without labels) for splitting.")
+
+    # 6. Determine split points
+    num_total_frames = len(all_files_for_split)
+    num_val_frames = int(num_total_frames * val_ratio)
+    num_test_frames = int(num_total_frames * test_ratio)
+
+    # Adjust for small datasets: ensure at least 1 frame if percentage is > 0 and total_frames > 0
+    if val_percentage > 0 and num_val_frames == 0 and num_total_frames > 0:
+        num_val_frames = 1
+    if test_percentage > 0 and num_test_frames == 0 and num_total_frames > 0:
+        num_test_frames = 1
+
+    # Ensure the sum of validation and test frames doesn't exceed total_frames,
+    # and adjust if necessary, prioritizing valid and test if train_percentage is very small.
+    # This logic is a bit tricky for very small datasets.
+    # A more robust approach might be to ensure at least one sample per split if its percentage is > 0
+    # and adjust the largest split (training) downwards.
+
+    # First, calculate remaining for training based on validation and test counts
+    current_val_test_sum = num_val_frames + num_test_frames
+    if current_val_test_sum > num_total_frames:
+        print("Warning: Calculated validation and test frames exceed total frames. Adjusting allocation.")
+        # If dataset is too small to fulfill all minimums, prioritize fixed counts
+        if num_total_frames == 1 and (val_percentage > 0 or test_percentage > 0):
+            if val_percentage > 0:
+                num_val_frames = 1
+                num_test_frames = 0
+            elif test_percentage > 0:
+                num_test_frames = 1
+                num_val_frames = 0
+            num_train_frames = 0
+            print("Only 1 frame available. Assigning to the first non-zero split percentage.")
+        elif num_total_frames > 1:
+            # Distribute remaining based on original val/test ratio if possible
+            remaining_for_val_test = num_total_frames
+            if val_ratio + test_ratio > 0:
+                adjusted_val_ratio = val_ratio / (val_ratio + test_ratio)
+                adjusted_test_ratio = test_ratio / (val_ratio + test_ratio)
+                num_val_frames = int(remaining_for_val_test * adjusted_val_ratio)
+                num_test_frames = remaining_for_val_test - num_val_frames
+            else: # Only training percentage was requested, or 0 total for val/test
+                num_val_frames = 0
+                num_test_frames = 0
+            num_train_frames = num_total_frames - num_val_frames - num_test_frames
+        else: # num_total_frames is 0
+            num_val_frames = 0
+            num_test_frames = 0
+            num_train_frames = 0
+
+    else:
+        num_train_frames = num_total_frames - num_val_frames - num_test_frames
+        # Ensure training set also has at least 1 if its percentage is > 0 and total_frames allows
+        if train_percentage > 0 and num_train_frames == 0 and num_total_frames > 0:
+            if num_total_frames - (num_val_frames + num_test_frames) >= 1:
+                num_train_frames = 1
+                # If adding 1 to train makes sum > total, reduce from val/test
+                current_sum = num_train_frames + num_val_frames + num_test_frames
+                if current_sum > num_total_frames:
+                    diff = current_sum - num_total_frames
+                    if num_test_frames >= diff:
+                        num_test_frames -= diff
+                    elif num_val_frames >= diff:
+                        num_val_frames -= diff
+                    else: # This case should ideally not happen if logic is sound, but as a fallback
+                        print("Could not satisfy all minimums. Data might be unevenly distributed.")
+            else:
+                print("Warning: Cannot allocate a frame to training while satisfying validation/test minimums. Training set will be 0.")
+                num_train_frames = 0 # Cannot add a frame to train if it breaks other minimums
+
+    # Final check to ensure no negative counts and total is correct
+    num_val_frames = max(0, num_val_frames)
+    num_test_frames = max(0, num_test_frames)
+    num_train_frames = max(0, num_train_frames)
+
+    # Re-adjust if rounding errors cause total to be off by 1
+    current_total = num_train_frames + num_val_frames + num_test_frames
+    if current_total != num_total_frames:
+        diff = num_total_frames - current_total
+        # Add or subtract the difference from the training set, as it's the largest and most flexible
+        num_train_frames += diff
+
+
+    # Slicing the list
+    validation_set_items = all_files_for_split[:num_val_frames]
+    test_set_items = all_files_for_split[num_val_frames : num_val_frames + num_test_frames]
+    training_set_items_remaining = all_files_for_split[num_val_frames + num_test_frames:]
+
+    print(f"Calculated split: {len(training_set_items_remaining)} (train), {len(validation_set_items)} (val), {len(test_set_items)} (test).")
+    print(f"Desired percentages: Train={train_percentage}%, Val={val_percentage}%, Test={test_percentage}%.")
+
+    # 7. Move validation files
+    moved_val_count = 0
+    if len(validation_set_items) > 0:
+        print("\n--- Step 2: Moving validation files to VALIDATION_PATH and VALIDATION_LABEL_PATH ---")
+        for img_file, lbl_file in validation_set_items:
+            current_img_path = os.path.join(TRAIN_PATH, img_file)
+            dest_img_path = os.path.join(VALIDATION_PATH, img_file)
+
+            try:
+                shutil.move(current_img_path, dest_img_path)
+                moved_val_count += 1
+                if lbl_file:
+                    current_lbl_path = os.path.join(TRAIN_LABEL_PATH, lbl_file)
+                    dest_lbl_path = os.path.join(VALIDATION_LABEL_PATH, lbl_file)
+                    shutil.move(current_lbl_path, dest_lbl_path)
+            except FileNotFoundError:
+                print(f"Error: File not found during move operation for '{img_file}' (or its label) to validation. Skipping.")
+            except Exception as e:
+                print(f"An unexpected error occurred while moving '{img_file}' to validation: {e}. Skipping.")
+    else:
+        print("\n--- Step 2: No files to move for validation (0% or no frames allocated). ---")
+
+
+    # 8. Move test files
+    moved_test_count = 0
+    if len(test_set_items) > 0:
+        print("\n--- Step 3: Moving test files to TEST_PATH and TEST_LABEL_PATH ---")
+        for img_file, lbl_file in test_set_items:
+            current_img_path = os.path.join(TRAIN_PATH, img_file)
+            dest_img_path = os.path.join(TEST_PATH, img_file)
+
+            try:
+                shutil.move(current_img_path, dest_img_path)
+                moved_test_count += 1
+                if lbl_file:
+                    current_lbl_path = os.path.join(TRAIN_LABEL_PATH, lbl_file)
+                    dest_lbl_path = os.path.join(TEST_LABEL_PATH, lbl_file)
+                    shutil.move(current_lbl_path, dest_lbl_path)
+            except FileNotFoundError:
+                print(f"Error: File not found during move operation for '{img_file}' (or its label) to test. Skipping.")
+            except Exception as e:
+                print(f"An unexpected error occurred while moving '{img_file}' to test: {e}. Skipping.")
+    else:
+        print("\n--- Step 3: No files to move for testing (0% or no frames allocated). ---")
+
+
+    print(f"\n--- Dataset split complete! Moved {moved_val_count} images to validation and {moved_test_count} images to testing. ---")
+
+    # Final count of actual files in directories (excluding hidden files and subdirectories)
+    def count_valid_files(directory):
+        count = 0
+        if not os.path.isdir(directory):
+            return 0 # Directory might not exist if percentage was 0
+        for f in os.listdir(directory):
+            if os.path.isfile(os.path.join(directory, f)) and not f.startswith('.'):
+                count += 1
+        return count
+
+    print(f"Training set now contains {count_valid_files(TRAIN_PATH)} valid images.")
+    print(f"Validation set now contains {count_valid_files(VALIDATION_PATH)} valid images.")
+    print(f"Test set now contains {count_valid_files(TEST_PATH)} valid images.")
 
 
 
