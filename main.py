@@ -17,9 +17,10 @@ if __name__ == '__main__':
     # --- Configuration needed in order to create a single training rgb dataset that have all of it's corresponding exr files associated via the same name. It's essential for the next step of fusion between rgb and exr frames ---
 
     #Getting all the different directories of the exported images in jpg and exr files. This process is mandatory in order to get an array of paths, where each of them points to the directory that contains two subfolders: depth and rgb (automatically produced by the Record3D app when exporting in jpg and exr)
-    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/')
 
-    #find_correct_exr_and_fix_it("/home/jacobo/Downloads/mines_dataset_old/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files')
+    array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/florence/')
+
+    find_correct_exr_and_fix_it("/home/jacobo/Downloads/test_dataset/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/test_dataset/images/fixed_exr_files')
 
     # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
@@ -76,17 +77,17 @@ if __name__ == '__main__':
 
     # 1. Calculate global min/max log-depth for the entire UNSPLIT dataset
     # This ensures consistent depth normalization across the final train/val/test splits.
-    print(f"Starting global depth range calculation on all raw images...")
+    #print(f"Starting global depth range calculation on all raw images...")
 
     all_rgb_files = sorted(
-        [f for f in os.listdir('/home/jacobo/Downloads/mines_dataset_old/images/train') if f.lower().endswith(('.jpeg', '.jpg', '.png'))])
+        [f for f in os.listdir('/home/jacobo/Downloads/rgbd_test_dataset/images/train') if f.lower().endswith(('.jpeg', '.jpg', '.png'))])
 
     global_min_log_depth, global_max_log_depth = calculate_log_depth_global_min_max(
         rgb_src_files_list=all_rgb_files,
-        depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files'
+        depth_src_dir='/home/jacobo/Downloads/rgbd_test_dataset/images/fixed_exr_files'
     )
 
-
+    print(f"min: {global_min_log_depth}, max: {global_max_log_depth}")
 
     # 2. Process and Fuse ALL raw RGB/EXR into 4-channel PNGs <- it works for the 4 channel training session but yolo11 doesn't save the best.pt with 4 channels, so it's useless
     #processed_count = process_and_fuse_all_to_png(
@@ -101,10 +102,10 @@ if __name__ == '__main__':
 
     # 2.1 Process and Fuse ALL raw RGB/EXR into 4-channel TIFFs <- it works either for the 4 channel training and for the saving of the best.pt in 4 channel format
     processed_count = process_and_fuse_all_to_tiff(
-        rgb_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/train',
-        depth_src_dir='/home/jacobo/Downloads/mines_dataset_old/images/fixed_exr_files',
-        labels_src_dir='/home/jacobo/Downloads/mines_dataset_old/labels/train',
-        temp_output_base_dir='/home/jacobo/Downloads/new_train_tiff',
+        rgb_src_dir='/home/jacobo/Downloads/test_dataset/images/train',
+        depth_src_dir='/home/jacobo/Downloads/test_dataset/images/fixed_exr_files',
+        labels_src_dir='/home/jacobo/Downloads/test_dataset/labels/train',
+        temp_output_base_dir='/home/jacobo/Downloads/test_rgbd',
         global_min_log_depth=global_min_log_depth,
         global_max_log_depth=global_max_log_depth,
         TARGET_WIDTH=480
@@ -115,29 +116,29 @@ if __name__ == '__main__':
         exit()
 
     #3. shuffle and split 80/20 only train and val
-    split_and_shuffle_dataset('/home/jacobo/Downloads/new_train_tiff/images/train','/home/jacobo/Downloads/new_train_tiff/labels/train','/home/jacobo/Downloads/new_train_tiff/images/val','/home/jacobo/Downloads/new_train_tiff/labels/val')
+    #split_and_shuffle_dataset('/home/jacobo/Downloads/new_train_tiff/images/train','/home/jacobo/Downloads/new_train_tiff/labels/train','/home/jacobo/Downloads/new_train_tiff/images/val','/home/jacobo/Downloads/new_train_tiff/labels/val')
     #3.1 IMPORTANT Alternatively you can use this function in order to split with custom percentages train val and test
     # Example Usage:
 
     # Define your paths (assuming they exist or the script will create them for non-zero percentages)
-    #train_images_dir = "datasets/my_yolo_dataset/images/train"
-    #train_labels_dir = "datasets/my_yolo_dataset/labels/train"
-    #val_images_dir = "datasets/my_yolo_dataset/images/val"
-    #val_labels_dir = "datasets/my_yolo_dataset/labels/val"
-    #test_images_dir = "datasets/my_yolo_dataset/images/test"
-    #test_labels_dir = "datasets/my_yolo_dataset/labels/test"
+    train_images_dir = "datasets/my_yolo_dataset/images/train"
+    train_labels_dir = "datasets/my_yolo_dataset/labels/train"
+    val_images_dir = "datasets/my_yolo_dataset/images/val"
+    val_labels_dir = "datasets/my_yolo_dataset/labels/val"
+    test_images_dir = "datasets/my_yolo_dataset/images/test"
+    test_labels_dir = "datasets/my_yolo_dataset/labels/test"
 
     # Example: 80-10-10 split
-    #print("\n--- Running 80-10-10 split ---")
-    #split_dataset_arbitrary_percentages(
-    #    train_images_dir, train_labels_dir,
-    #    val_images_dir, val_labels_dir,
-    #    test_images_dir, test_labels_dir,
-    #    train_percentage=80, val_percentage=10, test_percentage=10
-    #)
+    print("\n--- Running 80-10-10 split ---")
+    split_dataset_arbitrary_percentages(
+        train_images_dir, train_labels_dir,
+        val_images_dir, val_labels_dir,
+        test_images_dir, test_labels_dir,
+        train_percentage=80, val_percentage=10, test_percentage=10
+    )
 
     # --- Configuration for the shuffling of the test set (use it only if you have prepared the dataset with train val and not test)---
-    #shuffle_frames_randomly('/home/jacobo/Downloads/test_dataset_rgbd_converted/images/Test','/home/jacobo/Downloads/test_dataset_rgbd_converted/labels/Test')
+    #shuffle_frames_randomly('/home/jacobo/Downloads/test_rgbd/images/Test','/home/jacobo/Downloads/test_rgbd/labels/Test')
 
     # --- Configuration for checking the globals max and mins using the non logP function ---
     # List all RGB frames (assuming they are named sequentially, e.g., 00000.jpg)
