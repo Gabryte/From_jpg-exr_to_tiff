@@ -80,3 +80,93 @@ Procedure to obtain the Yolo 4 channels tiff dataset (the following code is alre
       #)
     ```
 
+
+If you would like to train a yolo model, you need a virtual enviroment installed on the training machine:
+
+Update the system: Before installing, it's a good practice to update your system's package list and upgrade installed packages.
+Code
+```
+   sudo apt update
+   sudo apt upgrade
+```
+Download the Miniconda installer:
+Navigate to your user's home directory. 
+Code
+```
+   cd ~
+```
+Download the Miniconda installer for Linux from the official Miniconda releases page. You can use wget to download the installer: 
+Code
+```
+   wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+```
+make the script executable. 
+Code
+```
+   chmod +x miniconda.sh
+```
+Run the installer:
+Execute the script using bash:
+Code
+```
+   bash miniconda.sh
+```
+Follow the prompts during installation. You'll be asked to review the license agreement and choose an installation directory. Important --> Accept all of the defaults, expecially when conda asks for the automatic startup initialization. 
+Initialize Conda:
+After installation, you need to initialize Conda for it to be available in your terminal sessions. 
+Run the following command:
+Code
+```
+   conda init
+```
+You might need to close and reopen your terminal or source the ~/.bashrc file for the changes to take effect. 
+Code
+```
+   source ~/.bashrc
+```
+Verify the installation:
+Check the installed Conda version:
+Code
+```
+   conda --version
+```
+You should see the Conda version number printed in the output. Then you need to create your virtual enviroment as it's a good practice to create a dedicated environment for your projects to avoid dependency conflicts, don't use the (base) conda enviroment because it's a system level enviroment.
+```
+conda create -n yolov11 python=3.12
+```
+-n yolov11: Specifies the name of your new environment (you can choose any name you like, e.g., yolov11_ultralytics).
+
+python=3.12: Sets the Python version for this environment. You can adjust this if a different version is required, don't use python = 3.13 or superiors versions, because ultralytics doesn't support them.
+
+Step 3: Activate the Conda Environment
+Before installing anything, you need to activate the environment you just created, in fact you will install all the python libraries on the miniconda environment that you created:
+```
+conda activate yolov11
+```
+You should see the environment name in your terminal prompt (e.g., (yolov11)).
+
+Step 4: Install PyTorch (with CUDA for an nvidia GPU)
+YOLOv11 relies on PyTorch. If you have an NVIDIA GPU, it's highly recommended to install the CUDA-enabled version of PyTorch for faster inference and training.
+
+Option A: For GPU (Recommended if you have NVIDIA CUDA-compatible GPU)
+
+Visit the official PyTorch website (https://pytorch.org/get-started/locally/) and select your preferences (OS, Package, Language, CUDA version). In our case Linux Ubuntu
+
+A common command for CUDA 11.8 might look like this (verify the exact command on the PyTorch website as it changes):
+*IMPORTANT to check the machine CUDA version run nvidia-smi*
+```
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+```
+Step 5: Install Ultralytics
+Once PyTorch is installed, you can install the Ultralytics package, which includes YOLOv11.
+```
+pip install ultralytics
+```
+Step 6: Verify the Installation
+You can quickly verify that YOLOv8 is installed and working by running a simple command:
+```
+yolo help
+```
+This should display the YOLO CLI help message, indicating that the installation was successful.
+
+
