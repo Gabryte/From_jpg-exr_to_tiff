@@ -15,7 +15,7 @@ Procedure to obtain the Yolo 4 channels tiff dataset (the following code is alre
  0. Prepare the main.py functions
  
  1. ```
-    array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/') #stop the path when you reach EXR_RGBD subdirectory
+    array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/') #stop the path when you reach the subdirectory in which are located the video folders
     ```
  
  2. ```
