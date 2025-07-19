@@ -265,7 +265,7 @@ def resize_rgb_and_depth_maintain_aspect_ratio(TARGET_WIDTH, rgb_frame, depth_ma
     # Calculate target height to maintain aspect ratio
     target_height = int(original_height * (TARGET_WIDTH / original_width))
 
-    print(f"Resizing to: {TARGET_WIDTH}x{target_height} (maintaining aspect ratio)")
+    #print(f"Resizing to: {TARGET_WIDTH}x{target_height} (maintaining aspect ratio)")
 
     # Resize RGB (uint8)
     rgb_frame_resized = cv2.resize(rgb_frame, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_AREA)

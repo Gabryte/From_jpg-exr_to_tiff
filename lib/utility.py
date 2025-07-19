@@ -1,4 +1,5 @@
 import shutil
+import warnings
 
 import OpenEXR
 import Imath
@@ -6,7 +7,7 @@ import cv2
 import numpy as np
 import hashlib
 import os
-
+import matplotlib.patches as patches
 import tifffile
 from matplotlib import pyplot as plt
 
