@@ -9,7 +9,6 @@ from tqdm import tqdm
 from lib.box_and_plotting_helpers import calculate_iou, xywhn_to_xyxy, plot_error_visualization
 from lib.utility import load_single_channel_exr_map,normalize_array_to_range
 import yaml
-import matplotlib.patches as patches # Import patches for plot_error_visualization
 
 def analyze_model_errors_rgbd(
         model_path,
@@ -98,6 +97,14 @@ def analyze_model_errors_rgbd(
         "global_fn_rejected_pred_confs": [],
         "global_fn_no_pred_1minus_ious": [],
         "global_fn_rejected_pred_1minus_ious": [],
+        # NEW: Global lists for Bbox Error (IoU) distributions
+        "global_tp_1minus_ious": [],  # Global list for (1 - IoU) of True Positives
+        "global_fp_loc_ious": [],     # Global list for IoU of FP Localization Errors
+        "global_fp_cls_ious": [],     # Global list for IoU of FP Classification Errors
+        # NEW: Global lists for Confidence distributions
+        "global_tp_confs": [],        # Global list for confidence of True Positives
+        "global_fp_loc_confs": [],    # Global list for confidence of FP Localization Errors
+        "global_fp_cls_confs": [],    # Global list for confidence of FP Classification Errors
     }
 
     if hasattr(model, 'names') and model.names is not None:
@@ -279,6 +286,8 @@ def analyze_model_errors_rgbd(
                             analysis_results["bbox_errors_iou_tp_by_class"][pred_class_id] = []
                         analysis_results["bbox_errors_iou_tp_by_class"][pred_class_id].append(
                             1.0 - best_iou_same_class)
+                        # NEW: Add to global TP IoU list
+                        analysis_results["global_tp_1minus_ious"].append(1.0 - best_iou_same_class)
 
                         is_true_positive = True
 
@@ -303,6 +312,7 @@ def analyze_model_errors_rgbd(
                         if pred_class_id not in analysis_results["tp_conf_by_class"]:
                             analysis_results["tp_conf_by_class"][pred_class_id] = []
                         analysis_results["tp_conf_by_class"][pred_class_id].append(pred['conf'])
+                        analysis_results["global_tp_confs"].append(pred['conf']) # Add to global TP confs
 
                 if not is_true_positive:
                     if best_gt_idx_same_class != -1 and best_iou_same_class > 0:
@@ -311,8 +321,11 @@ def analyze_model_errors_rgbd(
                             analysis_results["bbox_ious_fp_localization_by_class"][pred_class_id] = []
                         analysis_results["bbox_ious_fp_localization_by_class"][pred_class_id].append(
                             best_iou_same_class)
+                        # NEW: Add to global FP Loc IoU list
+                        analysis_results["global_fp_loc_ious"].append(best_iou_same_class)
 
                         # Update detection errors by distance (overall)
+                        #TODO check if it is necessary to change it into a TP due to the correct classification
                         for k, bin_upper_bound in enumerate(distance_bins):
                             if pred['distance'] <= bin_upper_bound:
                                 analysis_results["detection_errors_by_distance"][distance_labels[k]]["FP"] += 1
@@ -346,6 +359,7 @@ def analyze_model_errors_rgbd(
                         if pred_class_id not in analysis_results["fp_loc_conf_by_class"]:
                             analysis_results["fp_loc_conf_by_class"][pred_class_id] = []
                         analysis_results["fp_loc_conf_by_class"][pred_class_id].append(pred['conf'])
+                        analysis_results["global_fp_loc_confs"].append(pred['conf']) # Add to global FP-Loc confs
 
                     elif best_gt_idx_overall != -1 and best_iou_overall > 0 and pred_class_id != \
                             gt_boxes[best_gt_idx_overall]['class_id']:
@@ -354,6 +368,8 @@ def analyze_model_errors_rgbd(
                             analysis_results["bbox_ious_fp_classification_by_class"][pred_class_id] = []
                         analysis_results["bbox_ious_fp_classification_by_class"][pred_class_id].append(
                             best_iou_overall)
+                        # NEW: Add to global FP Cls IoU list
+                        analysis_results["global_fp_cls_ious"].append(best_iou_overall)
 
                         # Update detection errors by distance (overall)
                         for k, bin_upper_bound in enumerate(distance_bins):
@@ -393,6 +409,7 @@ def analyze_model_errors_rgbd(
                         if pred_class_id not in analysis_results["fp_cls_conf_by_class"]:
                             analysis_results["fp_cls_conf_by_class"][pred_class_id] = []
                         analysis_results["fp_cls_conf_by_class"][pred_class_id].append(pred['conf'])
+                        analysis_results["global_fp_cls_confs"].append(pred['conf']) # Add to global FP-Cls confs
                     else:
                         analysis_results["false_positives_spurious_detection"] += 1
 
@@ -599,7 +616,35 @@ def analyze_model_errors_rgbd(
                     plt.close()
                     print(f"Generated: bbox_iou_by_class/bbox_error_distribution_class_{class_name}.png")
 
-            # New plotting logic for confidence distribution
+            # NEW: Global Bounding Box Error/IoU Distribution
+            print("\n--- Generating Global Bounding Box Error/IoU Distribution ---")
+            if analysis_results["global_tp_1minus_ious"] or analysis_results["global_fp_loc_ious"] or analysis_results["global_fp_cls_ious"]:
+                plt.figure(figsize=(10, 6))
+
+                if analysis_results["global_tp_1minus_ious"]:
+                    plt.hist(analysis_results["global_tp_1minus_ious"], bins=20, edgecolor='black', alpha=0.7,
+                             label='True Positives (1 - IoU)', color='forestgreen')
+                if analysis_results["global_fp_loc_ious"]:
+                    plt.hist(analysis_results["global_fp_loc_ious"], bins=20, edgecolor='black', alpha=0.7,
+                             label='FP: Localization Error (IoU with GT)', color='orange', histtype='step', linestyle=':')
+                if analysis_results["global_fp_cls_ious"]:
+                    plt.hist(analysis_results["global_fp_cls_ious"], bins=20, edgecolor='black', alpha=0.7,
+                             label='FP: Classification Error (IoU with GT)', color='purple', histtype='step', linestyle='-')
+
+                plt.title('Global Distribution of Bounding Box Errors and IoUs (All Classes)')
+                plt.xlabel('IoU Value (1-IoU for TP, IoU for FPs)')
+                plt.ylabel('Frequency')
+                plt.grid(axis='y', alpha=0.75)
+                plt.legend()
+                global_bbox_iou_output_path = os.path.join(output_dir, "visualizations", "global_bbox_error_distribution.png")
+                plt.savefig(global_bbox_iou_output_path)
+                plt.close()
+                print(f"Generated: {os.path.basename(global_bbox_iou_output_path)}")
+            else:
+                print("No global bounding box error distributions to plot.")
+
+
+            # New plotting logic for confidence distribution (Per-Class)
             for class_id in sorted(list(all_tracked_classes)):
                 tp_confs = analysis_results["tp_conf_by_class"].get(class_id, [])
                 fp_loc_confs = analysis_results["fp_loc_conf_by_class"].get(class_id, [])
@@ -631,6 +676,34 @@ def analyze_model_errors_rgbd(
                     plt.savefig(output_path)
                     plt.close()
                     print(f"Generated: confidence_distribution_by_class/confidence_distribution_class_{class_name}.png")
+
+            # NEW: Global Confidence Distribution (All Classes)
+            print("\n--- Generating Global Confidence Distribution (All Classes) ---")
+            if analysis_results["global_tp_confs"] or analysis_results["global_fp_loc_confs"] or analysis_results["global_fp_cls_confs"]:
+                plt.figure(figsize=(10, 6))
+
+                if analysis_results["global_tp_confs"]:
+                    plt.hist(analysis_results["global_tp_confs"], bins=20, edgecolor='black', alpha=0.7,
+                             label='True Positives (Confidence)', color='forestgreen')
+                if analysis_results["global_fp_loc_confs"]:
+                    plt.hist(analysis_results["global_fp_loc_confs"], bins=20, edgecolor='black', alpha=0.7,
+                             label='FP: Localization Error (Confidence)', color='orange', histtype='step', linestyle=':')
+                if analysis_results["global_fp_cls_confs"]:
+                    plt.hist(analysis_results["global_fp_cls_confs"], bins=20, edgecolor='black', alpha=0.7,
+                             label='FP: Classification Error (Confidence)', color='purple', histtype='step', linestyle='-')
+
+                plt.title('Global Distribution of Predicted Confidence (All Classes)')
+                plt.xlabel('Predicted Confidence')
+                plt.ylabel('Frequency')
+                plt.grid(axis='y', alpha=0.75)
+                plt.legend()
+                global_conf_output_path = os.path.join(output_dir, "visualizations", "global_confidence_distribution.png")
+                plt.savefig(global_conf_output_path)
+                plt.close()
+                print(f"Generated: {os.path.basename(global_conf_output_path)}")
+            else:
+                print("No global confidence distributions to plot.")
+
 
             # NEW: Plotting overlapped FN distributions by confidence and 1-IoU (Per-Class)
             print("\n--- Generating False Negative Distributions (Per-Class) ---")

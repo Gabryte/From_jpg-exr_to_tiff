@@ -174,8 +174,8 @@ if __name__ == '__main__':
         test_labels_dir=test_labels_dir,
         test_depth_dir=test_depth_dir,
         output_dir=output_analysis_dir,
-        #iou_threshold=0.5,  # Standard IoU threshold for evaluation
-        #conf_threshold=0.25,  # Confidence threshold for displaying detections
+        iou_threshold=None,  # Standard IoU threshold for evaluation
+        conf_threshold=None,  # Confidence threshold for displaying detections
         class_conf_thresholds={
             0:0.0525,
             1:0.04,
