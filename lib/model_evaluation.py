@@ -1,14 +1,16 @@
 import os
 import sys
-from lib.global_dataset_utility import resize_rgb_and_depth_maintain_aspect_ratio
+from lib.global_dataset_functions.resize import resize_rgb_and_depth_maintain_aspect_ratio
 import cv2
 import numpy as np
 from ultralytics import YOLO
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from lib.box_and_plotting_helpers import calculate_iou, xywhn_to_xyxy, plot_error_visualization
-from lib.utility import load_single_channel_exr_map,normalize_array_to_range
+from lib.utility import normalize_array_to_range
+from lib.exr_functions import load_single_channel_exr_map
 import yaml
+import supervision as sv # Import supervision
 
 def analyze_model_errors_rgbd(
         model_path,
@@ -22,7 +24,10 @@ def analyze_model_errors_rgbd(
         class_iou_thresholds=None,
         global_min_log_depth=None,
         global_max_log_depth=None,
-        TARGET_WIDTH=640
+        TARGET_WIDTH=640,
+        use_inference_slicer=False, # New parameter to enable/disable slicer
+        slicer_slice_wh=(640, 640), # Default slice size
+        slicer_overlap_ratio=(15, 15) # Default overlap ratio
 ):
     """
     Analyzes YOLOv11 RGBD model errors, categorizing detections and visualizing them.
@@ -44,6 +49,9 @@ def analyze_model_errors_rgbd(
         global_min_log_depth (float): Minimum log depth for normalization (from your dataset).
         global_max_log_depth (float): Maximum log depth for normalization (from your dataset).
         TARGET_WIDTH (int): The target width used during image processing.
+        use_inference_slicer (bool): If True, use Supervision's InferenceSlicer for inference.
+        slicer_slice_wh (tuple): (width, height) of the slices for InferenceSlicer.
+        slicer_overlap_ratio (float): Overlap ratio between slices for InferenceSlicer.
     """
 
     os.makedirs(output_dir, exist_ok=True)
@@ -138,6 +146,22 @@ def analyze_model_errors_rgbd(
         for label in distance_labels:
             analysis_results["detection_errors_by_class_and_distance"][class_id][label] = {"TP": 0, "FP": 0, "FN": 0}
 
+    # Define the callback for the InferenceSlicer if it's used
+    slicer = None
+    if use_inference_slicer:
+        def callback_slicer(image_slice: np.ndarray) -> sv.Detections:
+            result = model(image_slice, verbose=False, conf=0.0001, iou=0.0001)[0]
+            return sv.Detections.from_ultralytics(result)
+
+        slicer = sv.InferenceSlicer(
+            callback=callback_slicer,
+            slice_wh=slicer_slice_wh,
+            overlap_ratio_wh=None,
+            overlap_wh=slicer_overlap_ratio,
+        )
+        print(f"🔄 Using InferenceSlicer with slice_wh={slicer_slice_wh} and overlap_ratio={slicer_overlap_ratio}")
+
+
     with tqdm(total=len(image_files), desc="Analyzing Frames", file=original_stdout) as pbar:
         for img_filename in image_files:
             base_filename = os.path.splitext(img_filename)[0]
@@ -147,16 +171,16 @@ def analyze_model_errors_rgbd(
 
             analysis_results["total_frames"] += 1
 
-            img_rgb_4ch = cv2.imread(rgb_path, cv2.IMREAD_UNCHANGED)
-            if img_rgb_4ch is None:
+            img_rgb_4ch_raw = cv2.imread(rgb_path, cv2.IMREAD_UNCHANGED)
+            if img_rgb_4ch_raw is None:
                 print(f"Skipping {rgb_path}: Could not load 4-channel TIFF image.")
                 pbar.update(1)
                 continue
 
-            img_rgb_bgr_3ch = img_rgb_4ch[:, :, :3]
+            img_rgb_bgr_3ch = img_rgb_4ch_raw[:, :, :3]
             img_rgb_display = cv2.cvtColor(img_rgb_bgr_3ch, cv2.COLOR_BGR2RGB)
 
-            initial_h, initial_w, _ = img_rgb_4ch.shape
+            initial_h, initial_w, _ = img_rgb_4ch_raw.shape
 
             depth_map_raw = load_single_channel_exr_map(depth_exr_path)
             if depth_map_raw is None:
@@ -167,6 +191,7 @@ def analyze_model_errors_rgbd(
             current_h, current_w = initial_h, initial_w
             depth_map_for_analysis = depth_map_raw
 
+            # Prepare the 4-channel input for the model, considering TARGET_WIDTH
             if TARGET_WIDTH:
                 img_rgb_resized, depth_map_resized_to_target_width = resize_rgb_and_depth_maintain_aspect_ratio(
                     TARGET_WIDTH=TARGET_WIDTH,
@@ -174,7 +199,7 @@ def analyze_model_errors_rgbd(
                     depth_map=depth_map_raw
                 )
                 current_h, current_w, _ = img_rgb_resized.shape
-                depth_map_for_analysis = depth_map_resized_to_target_width
+                depth_map_for_analysis = depth_map_resized_to_target_width # This is the resized depth map
 
                 log_depth_for_model = np.log1p(depth_map_for_analysis)
                 normalized_depth_float_for_model = normalize_array_to_range(
@@ -190,14 +215,12 @@ def analyze_model_errors_rgbd(
                 img_rgb_resized_bgr = cv2.cvtColor(img_rgb_resized, cv2.COLOR_RGB2BGR)
                 model_input_image_4ch = np.concatenate((img_rgb_resized_bgr, depth_channel_for_model_input_hwc),
                                                        axis=2)
-
-                img_for_display = img_rgb_resized
-
+                img_for_display = img_rgb_resized # Use resized RGB for display
             else:
                 depth_map_for_analysis = cv2.resize(depth_map_raw, (initial_w, initial_h),
                                                     interpolation=cv2.INTER_LINEAR)
                 img_for_display = img_rgb_display
-                model_input_image_4ch = img_rgb_4ch
+                model_input_image_4ch = img_rgb_4ch_raw # Use original 4-channel image if no target width
 
             gt_boxes = []
             try:
@@ -205,6 +228,7 @@ def analyze_model_errors_rgbd(
                     for line in f_label:
                         parts = list(map(float, line.strip().split()))
                         class_id = int(parts[0])
+                        # GT boxes should be based on the dimensions the model sees (current_w, current_h)
                         bbox_xyxy = xywhn_to_xyxy(parts[1:], current_w, current_h)
 
                         center_x, center_y = int((bbox_xyxy[0] + bbox_xyxy[2]) / 2), int(
@@ -218,15 +242,17 @@ def analyze_model_errors_rgbd(
             except FileNotFoundError:
                 pass
 
-            # Run inference with a very low confidence threshold and IoU to get all potential predictions
-            results = model(model_input_image_4ch, verbose=False, conf=0.0001, iou=0.0001)
+            pred_boxes_all_conf = []
 
-            pred_boxes_all_conf = []  # Store all predictions regardless of their confidence
-            if results and results[0].boxes:
-                for box in results[0].boxes:
-                    class_id = int(box.cls[0].cpu().numpy())
-                    conf = float(box.conf[0].cpu().numpy())
-                    bbox_xyxy = box.xyxy[0].cpu().numpy().astype(int).tolist()
+            if use_inference_slicer and slicer is not None:
+                # Pass the 4-channel image to the slicer
+                detections_sv = slicer(model_input_image_4ch)
+                # Convert Supervision Detections back to a list of dictionaries for consistent processing
+                for i in range(len(detections_sv.xyxy)):
+                    bbox_xyxy = detections_sv.xyxy[i].astype(int).tolist()
+                    class_id = int(detections_sv.class_id[i])
+                    conf = float(detections_sv.confidence[i])
+
                     center_x, center_y = int((bbox_xyxy[0] + bbox_xyxy[2]) / 2), int(
                         (bbox_xyxy[1] + bbox_xyxy[3]) / 2)
                     center_x = np.clip(center_x, 0, current_w - 1)
@@ -244,6 +270,33 @@ def analyze_model_errors_rgbd(
                         'applied_conf_threshold': current_conf_threshold_for_pred,
                         'applied_iou_threshold': current_iou_threshold_for_pred
                     })
+
+            else:
+                # Original inference logic
+                results = model(model_input_image_4ch, verbose=False, conf=0.0001, iou=0.0001)
+
+                if results and results[0].boxes:
+                    for box in results[0].boxes:
+                        class_id = int(box.cls[0].cpu().numpy())
+                        conf = float(box.conf[0].cpu().numpy())
+                        bbox_xyxy = box.xyxy[0].cpu().numpy().astype(int).tolist()
+                        center_x, center_y = int((bbox_xyxy[0] + bbox_xyxy[2]) / 2), int(
+                            (bbox_xyxy[1] + bbox_xyxy[3]) / 2)
+                        center_x = np.clip(center_x, 0, current_w - 1)
+                        center_y = np.clip(center_y, 0, current_h - 1)
+                        pred_depth = depth_map_for_analysis[center_y, center_x]
+
+                        current_conf_threshold_for_pred = class_conf_thresholds.get(class_id, conf_threshold)
+                        current_iou_threshold_for_pred = class_iou_thresholds.get(class_id, iou_threshold)
+
+                        pred_boxes_all_conf.append({
+                            'bbox': bbox_xyxy,
+                            'class_id': class_id,
+                            'conf': conf,
+                            'distance': pred_depth,
+                            'applied_conf_threshold': current_conf_threshold_for_pred,
+                            'applied_iou_threshold': current_iou_threshold_for_pred
+                        })
 
             # Filter predictions based on confidence threshold for TP/FP analysis
             pred_boxes_filtered = [
@@ -325,7 +378,7 @@ def analyze_model_errors_rgbd(
                         analysis_results["global_fp_loc_ious"].append(best_iou_same_class)
 
                         # Update detection errors by distance (overall)
-                        #TODO check if it is necessary to change it into a TP due to the correct classification
+                        
                         for k, bin_upper_bound in enumerate(distance_bins):
                             if pred['distance'] <= bin_upper_bound:
                                 analysis_results["detection_errors_by_distance"][distance_labels[k]]["FP"] += 1

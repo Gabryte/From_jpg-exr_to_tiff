@@ -1,13 +1,14 @@
-from lib.evaluation import analyze_model_errors_rgbd
-from lib.global_dataset_utility import calculate_global_min_max, split_and_shuffle_dataset, process_and_convert_images, \
-    calculate_log_depth_global_min_max, shuffle_frames_randomly, split_dataset_arbitrary_percentages
-from lib.fusion_related_functions import find_correct_exr_and_fix_it, \
-    convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png, \
-    process_and_fuse_all_to_tiff
-from lib.utility import get_input_directories, visualize_multichannel_tiff, check_exr_content
-from lib.utility import find_missing_exr_for_jpg
-from lib.fusion_related_functions import fuse
-from lib.global_dataset_utility import resize_resolution_maintaining_aspect_ratio
+from lib.model_evaluation import analyze_model_errors_rgbd
+#from lib.global_dataset_utility import calculate_global_min_max, process_and_convert_images
+from lib.global_dataset_functions.global_min_max import calculate_log_depth_global_min_max
+from lib.global_dataset_functions.shuffle_and_split import shuffle_frames_randomly, split_and_shuffle_dataset, \
+    split_dataset_arbitrary_percentages
+#from lib.fusion_related_functions import convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png, \
+#    process_and_fuse_all_to_tiff
+from lib.utility import get_input_directories #, visualize_multichannel_tiff
+from lib.exr_functions import find_missing_exr_for_jpg, check_exr_content, find_correct_exr_and_fix_it
+#from lib.fusion_related_functions import fuse
+from lib.global_dataset_functions.resize import resize_resolution_maintaining_aspect_ratio
 import OpenEXR
 import Imath
 import numpy as np
@@ -19,9 +20,9 @@ if __name__ == '__main__':
 
     #Getting all the different directories of the exported images in jpg and exr files. This process is mandatory in order to get an array of paths, where each of them points to the directory that contains two subfolders: depth and rgb (automatically produced by the Record3D app when exporting in jpg and exr)
 
-    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/Annotated')
+    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/florence')
 
-    #find_correct_exr_and_fix_it("/home/jacobo/Downloads/train_dataset_cvat_export/images/train",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/train_dataset_cvat_export/images/fixed_exr_files')
+    #find_correct_exr_and_fix_it("/home/jacobo/Downloads/test_set_exported_cvat/images/Test",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files')
 
     # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
@@ -94,22 +95,23 @@ if __name__ == '__main__':
 
 
     # 2.1 Process and Fuse ALL raw RGB/EXR into 4-channel TIFFs <- it works either for the 4 channel training and for the saving of the best.pt in 4 channel format
-   # processed_count = process_and_fuse_all_to_tiff(
-   #     rgb_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/train',
-   #     depth_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files',
-   #     labels_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/labels/train',
-   #     temp_output_base_dir='/home/jacobo/Downloads/fused_rgbd_test_images',
-   #     global_min_log_depth=-0.01998910680413246,
-   #     global_max_log_depth=2.505526065826416,
-   #     TARGET_WIDTH=600
-   # )
+    #processed_count = process_and_fuse_all_to_tiff(
+    #    rgb_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/Test',
+    #    depth_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files',
+    #    labels_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/labels/Test',
+    #    temp_output_base_dir='/home/jacobo/Downloads/high_res_fused_rgbd_test_images/',
+    #    global_min_log_depth=-0.01998910680413246,
+    #    global_max_log_depth=2.505526065826416,
+    #    TARGET_WIDTH=1440
+    #)
 
     #if processed_count == 0:
-        #print("No images were processed. Exiting without splitting.")
-        #exit()
+    #    print("No images were processed. Exiting without splitting.")
+    #    exit()
+
 
     #3. shuffle and split 80/20 only train and val
-    #split_and_shuffle_dataset('/home/jacobo/Downloads/new_train_tiff/images/train','/home/jacobo/Downloads/new_train_tiff/labels/train','/home/jacobo/Downloads/new_train_tiff/images/val','/home/jacobo/Downloads/new_train_tiff/labels/val')
+    #split_and_shuffle_dataset('/mnt/Pontifex/high_res_dataset/images/train','/mnt/Pontifex/high_res_dataset/labels/train','/mnt/Pontifex/high_res_dataset/images/val','/mnt/Pontifex/high_res_dataset/labels/val')
     #3.1 IMPORTANT Alternatively you can use this function in order to split with custom percentages train val and test
     # Example Usage:
 
@@ -151,11 +153,11 @@ if __name__ == '__main__':
 
     # --- Configuration for an in-depth model error analysis
     # Define your paths
-    model_path = '/home/jacobo/Downloads/my_yolo_train/107_epochs_classic_dataset_rgbd_train/weights/best.pt'  # e.g., 'runs/detect/train/weights/best.pt'
-    test_images_dir = '/home/jacobo/Downloads/fused_rgbd_test_images/images/Test'
-    test_labels_dir = '/home/jacobo/Downloads/fused_rgbd_test_images/labels/Test'
+    model_path = '/home/jacobo/Downloads/my_yolo_train/hi_res_rgbd_train/weights/best.pt'  # e.g., 'runs/detect/train/weights/best.pt'
+    test_images_dir = '/home/jacobo/Downloads/high_res_fused_rgbd_test_images/images/Test'
+    test_labels_dir = '/home/jacobo/Downloads/high_res_fused_rgbd_test_images/labels/Test'
     test_depth_dir = '/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files'  # Directory containing original EXR depth files
-    output_analysis_dir = '/home/jacobo/Downloads/analysis_results'
+    output_analysis_dir = '/home/jacobo/Downloads/custom_67_epochs_high_res_analysis_results_with_slicer'
 
     # You MUST provide these from your dataset preprocessing
     # These are the min/max log depths *calculated across your entire training dataset*.
@@ -165,8 +167,8 @@ if __name__ == '__main__':
     global_min_log_depth = -0.01998910680413246  # Placeholder, replace with actual value
     global_max_log_depth = 2.505526065826416  # Placeholder, replace with actual value
 
-
-    TARGET_WIDTH = 600  # Ensure this matches the image size your model was trained with
+    #TESTING SLICER 3840 X 5120
+    TARGET_WIDTH = 3840
 
     analyze_model_errors_rgbd(
         model_path=model_path,
@@ -176,20 +178,41 @@ if __name__ == '__main__':
         output_dir=output_analysis_dir,
         iou_threshold=None,  # Standard IoU threshold for evaluation
         conf_threshold=None,  # Confidence threshold for displaying detections
+
+        #0: TM-62P3
+        #1: PMN-4
+        #2: PTM-1G
+        #3: PFM-1-BUTTERFLY
+
         class_conf_thresholds={
-            0:0.0525,
-            1:0.04,
-            2:0.05,
-            3:0.05,
+            #HIGH RES
+            0:0.01,
+            1:0.01,
+            2:0.01,
+            3:0.01,
+            #LOW RES
+            #0:0.0525,
+            #1:0.04,
+            #2:0.05,
+            #3:0.05,
         },
         class_iou_thresholds={
-            0:0.03,
-            1:0.18,
+            #HIGH RES
+            0:0.22,
+            1:0.10,
             2:0.01,
-            3:0.11
+            3:0.11,
+
+            #LOW RES
+            #0:0.03,
+            #1:0.18,
+            #2:0.01,
+            #3:0.11
         },
         global_min_log_depth=global_min_log_depth,
         global_max_log_depth=global_max_log_depth,
-        TARGET_WIDTH=TARGET_WIDTH
+        TARGET_WIDTH=TARGET_WIDTH,
+        use_inference_slicer=True,  # New parameter to enable/disable slicer
+        slicer_slice_wh=(1920, 1920),  # Default slice size
+        slicer_overlap_ratio=(384,384)  # Default overlap ratio
     )
-
