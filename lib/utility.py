@@ -7,78 +7,157 @@ import os
 
 def normalize_array_to_range(data_array, min_val=None, max_val=None, target_range=(0, 1)):
     """
-    Normalizes a NumPy array to a specified target range [target_min, target_max].
-    If min_val or max_val are not provided, they are calculated from the array itself.
-    Handles empty arrays and cases where min_val == max_val.
+    Scales a NumPy array to a specified target range.
+
+    This function performs min-max normalization. If the minimum and maximum values
+    of the data are not provided, they are computed from the array itself. It is
+    designed to robustly handle edge cases such as empty arrays, arrays with
+    uniform values, and non-finite numbers (NaN, infinity).
+
+    Args:
+        data_array (np.ndarray): The input NumPy array to be normalized.
+        min_val (float, optional): The minimum value to use for normalization.
+                                   If None, the array's minimum is used. Defaults to None.
+        max_val (float, optional): The maximum value to use for normalization.
+                                   If None, the array's maximum is used. Defaults to None.
+        target_range (tuple[float, float]): The desired output range as (min, max).
+                                            Defaults to (0, 1).
+
+    Returns:
+        np.ndarray: The normalized array with dtype float32, with values scaled
+                    to the specified target_range.
     """
+    # Handle the edge case of an empty array to prevent errors.
     if data_array.size == 0:
         return np.zeros_like(data_array, dtype=np.float32)
 
-    # Ensure finite values for calculation
+    # Replace non-finite values (NaN, inf) with 0.0 to ensure calculations are valid.
     data_array_finite = np.nan_to_num(data_array, nan=0.0, posinf=0.0, neginf=0.0)
 
+    # Determine the min and max values from the data if not provided by the user.
     if min_val is None:
         min_val = data_array_finite.min()
     if max_val is None:
         max_val = data_array_finite.max()
 
+    # If all values in the array are the same, division by zero would occur.
+    # To handle this, return an array where all values are the midpoint of the target range.
     if max_val == min_val:
-        # If all values are the same, map to the middle of the target range or 0
-        return np.full_like(data_array, (target_range[0] + target_range[1]) / 2.0, dtype=np.float32)
+        mid_point = (target_range[0] + target_range[1]) / 2.0
+        return np.full_like(data_array, mid_point, dtype=np.float32)
 
-    # Scale to 0-1 first
+    # Perform min-max normalization: first scale the data to the [0, 1] range.
     normalized = (data_array_finite - min_val) / (max_val - min_val)
 
-    # Then to target_range
+    # Scale and shift the [0, 1] result to the desired target_range.
     scale_factor = target_range[1] - target_range[0]
     scaled = normalized * scale_factor + target_range[0]
+
+    # Clip the values to ensure they fall strictly within the target range and set the final data type.
     return np.clip(scaled, target_range[0], target_range[1]).astype(np.float32)
 
 
 def generate_file_hash(filepath, hash_algorithm='md5'):
-    """Generates the hash of a file's content."""
-    hasher = hashlib.new(hash_algorithm)
-    with open(filepath, 'rb') as f:
-        while True:
-            chunk = f.read(8192)  # Read file in chunks
-            if not chunk:
-                break
-            hasher.update(chunk)
-    return hasher.hexdigest()
+    """
+    Generates a hexadecimal hash for a file's content.
+
+    This function reads the file in binary chunks to efficiently handle large
+    files without consuming excessive memory. It supports any hashing algorithm
+    available in Python's `hashlib` module.
+
+    Args:
+        filepath (str): The absolute or relative path to the file.
+        hash_algorithm (str): The name of the hash algorithm to use (e.g.,
+                              'md5', 'sha256'). Defaults to 'md5'.
+
+    Returns:
+        str: The hexadecimal representation of the file's hash.
+             Returns an empty string if the file cannot be read.
+    """
+    try:
+        # Initialize the hasher with the specified algorithm.
+        hasher = hashlib.new(hash_algorithm)
+
+        # Open the file in binary read mode ('rb'). This is crucial for hashing
+        # as it ensures consistent byte reading across all platforms.
+        with open(filepath, 'rb') as f:
+            # Read the file in fixed-size chunks (e.g., 8KB) in a loop.
+            # This is memory-efficient for very large files.
+            while True:
+                chunk = f.read(8192)
+                if not chunk:
+                    # End of file has been reached.
+                    break
+                # Update the hasher with the content of the current chunk.
+                hasher.update(chunk)
+
+        # Return the final hash as a hexadecimal string.
+        return hasher.hexdigest()
+    except IOError as e:
+        print(f"Error reading file {filepath}: {e}")
+        return ""
 
 
 def get_input_directories(directories_path):
-   subfolders = [f.path for f in os.scandir(directories_path) if f.is_dir()]
-   for i,folder in enumerate(subfolders):
-       subfolders[i] = os.path.join(folder,"EXR_RGBD")
-   return subfolders
+    """
+    Finds all immediate subdirectories within a given path and appends a
+    specific child directory name to each.
 
+    For example, if `directories_path` contains `folder1` and `folder2`, this
+    function will return `['.../folder1/EXR_RGBD', '.../folder2/EXR_RGBD']`.
+
+    Args:
+        directories_path (str): The path to the parent directory to scan.
+
+    Returns:
+        list[str]: A list of complete paths to the "EXR_RGBD" subfolders.
+    """
+    # Use os.scandir for better performance than os.listdir, as it fetches
+    # file type information during the initial directory scan.
+    subfolders = [f.path for f in os.scandir(directories_path) if f.is_dir()]
+
+    # Iterate through the list of found subfolders to modify each path.
+    for i, folder in enumerate(subfolders):
+        # Append the target subfolder name using os.path.join for
+        # cross-platform compatibility (handles '/' vs '\' correctly).
+        subfolders[i] = os.path.join(folder, "EXR_RGBD")
+
+    return subfolders
 
 def copy_and_rename_file(source_directory, destination_directory, original_filename, new_filename):
     """
-    Copies a file from a source directory to a destination directory and renames it.
+    Copies a file to a new location and gives it a new name.
+
+    This utility ensures the source file exists before attempting the copy and
+    creates the destination directory if it doesn't already exist. It uses
+    `shutil.copy2` to preserve file metadata (e.g., timestamps).
 
     Args:
-        source_directory (str): The path to the directory where the original file is located.
-        destination_directory (str): The path to the directory where the file will be copied.
-        original_filename (str): The original name of the file (including extension).
-        new_filename (str): The new name for the copied file (including extension).
+        source_directory (str): The path to the directory containing the original file.
+        destination_directory (str): The path to the target directory.
+        original_filename (str): The name of the file to be copied.
+        new_filename (str): The desired new name for the file at the destination.
     """
+    # Construct full, platform-agnostic paths for the source and destination files.
     source_path = os.path.join(source_directory, original_filename)
     destination_path = os.path.join(destination_directory, new_filename)
 
-    # Ensure the source file exists
+    # Pre-flight check: ensure the source file actually exists before proceeding.
     if not os.path.exists(source_path):
         print(f"Error: Source file '{source_path}' does not exist.")
         return
 
-    # Create the destination directory if it doesn't exist
+    # Ensure the destination directory exists. `exist_ok=True` prevents an
+    # error if the directory has already been created.
     os.makedirs(destination_directory, exist_ok=True)
 
     try:
+        # Use shutil.copy2 to copy the file. Unlike shutil.copy, copy2 also
+        # attempts to preserve all file metadata.
         shutil.copy2(source_path, destination_path)
-        print(f"Successfully copied '{original_filename}' from '{source_directory}' to '{destination_directory}' as '{new_filename}'.")
+        print(f"Successfully copied '{original_filename}' to '{destination_path}'.")
     except Exception as e:
+        # Catch any exceptions during the file copy operation for graceful error handling.
         print(f"An error occurred while copying the file: {e}")
 
 # def visualize_multichannel_tiff(tiff_file_path: str, preview_output_dir: str):

@@ -29,7 +29,7 @@ def main():
             cos_lr=True,
             close_mosaic=20,
             amp=True,
-            profile=True,
+            profile=False,
             freeze=10,
             multi_scale=True,
             val=True,

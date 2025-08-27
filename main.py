@@ -27,12 +27,6 @@ if __name__ == '__main__':
     # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
 
-    # --- Configuration of the old fuse function (it produces tiff images in a format that yolo don't understand) ---
-    #fuse('/home/jacobo/Downloads/mines_dataset/images/train','/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files','/home/jacobo/Downloads/mines_dataset/images/tiff',480)
-
-
-    # --- Configuration in order to resize images ---
-    #resize_resolution_maintaining_aspect_ratio(480,'/home/jacobo/Downloads/mines_dataset/images/train')
 
 
     # --- Configuration for 80/20 shuffling and splitting of a dataset ---
@@ -60,19 +54,6 @@ if __name__ == '__main__':
     #else:
         #print(f"No TIFF files found in '{tiff_data_directory}'. Please ensure the processing has run and files exist.")
 
-
-
-    # --- Configuration for Conversion from tiff to yolo11 png incompatible dataset (this function expects a tiff dataset build by the fuse function) ---
-    #input_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset/'
-    #output_base_dir = '/home/jacobo/dataset/mines_multichannel_dataset_converted_png/'
-
-    #input_image_subdir = 'images/train'
-    #output_image_subdir = 'images/train'  # Keeping same subdirectory structure
-
-    #input_val_subdir = 'images/val'
-    #output_val_subdir = 'images/val'
-
-    #convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset(input_base_dir, output_base_dir,input_image_subdir, output_image_subdir,input_val_subdir, output_val_subdir,'labels/Test')
 
 
     #  --- Configuration for straightforward conversion after having organized all the exr files and jpg files into two different directories; where each jpg is associated with it's corresponding exr file having the same names ---
@@ -168,7 +149,7 @@ if __name__ == '__main__':
     global_max_log_depth = 2.505526065826416  # Placeholder, replace with actual value
 
     #TESTING SLICER 3840 X 5120
-    TARGET_WIDTH = 3840
+    TARGET_WIDTH = 1920
 
     analyze_model_errors_rgbd(
         model_path=model_path,
@@ -176,43 +157,45 @@ if __name__ == '__main__':
         test_labels_dir=test_labels_dir,
         test_depth_dir=test_depth_dir,
         output_dir=output_analysis_dir,
-        iou_threshold=None,  # Standard IoU threshold for evaluation
-        conf_threshold=None,  # Confidence threshold for displaying detections
+        iou_threshold=0.5,  # Standard IoU threshold for evaluation
+        conf_threshold=0.05,  # Confidence threshold for displaying detections
 
         #0: TM-62P3
         #1: PMN-4
         #2: PTM-1G
         #3: PFM-1-BUTTERFLY
 
-        class_conf_thresholds={
+        class_conf_thresholds=None,#{
             #HIGH RES
-            0:0.01,
-            1:0.01,
-            2:0.01,
-            3:0.01,
+            #0:0.01,
+            #1:0.01,
+            #2:0.01,
+            #3:0.01,
+
             #LOW RES
             #0:0.0525,
             #1:0.04,
             #2:0.05,
             #3:0.05,
-        },
-        class_iou_thresholds={
+        #},
+        class_iou_thresholds=None,#{
             #HIGH RES
-            0:0.22,
-            1:0.10,
-            2:0.01,
-            3:0.11,
+            #0:0.22,
+            #1:0.10,
+            #2:0.01,
+            #3:0.11,
 
             #LOW RES
             #0:0.03,
             #1:0.18,
             #2:0.01,
             #3:0.11
-        },
+        #},
         global_min_log_depth=global_min_log_depth,
         global_max_log_depth=global_max_log_depth,
         TARGET_WIDTH=TARGET_WIDTH,
         use_inference_slicer=True,  # New parameter to enable/disable slicer
-        slicer_slice_wh=(1920, 1920),  # Default slice size
-        slicer_overlap_ratio=(384,384)  # Default overlap ratio
+        slicer_slice_wh=(800, 800),  # Default slice size
+        slicer_overlap_ratio=(160,160),  # Default overlap ratio
+        merge_iou=0.5,
     )

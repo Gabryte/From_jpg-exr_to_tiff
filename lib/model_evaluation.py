@@ -28,7 +28,7 @@ def analyze_model_errors_rgbd(
         use_inference_slicer=False, # New parameter to enable/disable slicer
         slicer_slice_wh=(640, 640), # Default slice size
         slicer_overlap_ratio=(15, 15) # Default overlap ratio
-):
+        ,merge_iou=0.5):
     """
     Analyzes YOLOv11 RGBD model errors, categorizing detections and visualizing them.
     Includes visualization of ground truth boxes in false positive/negative frames
@@ -51,7 +51,7 @@ def analyze_model_errors_rgbd(
         TARGET_WIDTH (int): The target width used during image processing.
         use_inference_slicer (bool): If True, use Supervision's InferenceSlicer for inference.
         slicer_slice_wh (tuple): (width, height) of the slices for InferenceSlicer.
-        slicer_overlap_ratio (float): Overlap ratio between slices for InferenceSlicer.
+        slicer_overlap_ratio (int): Overlap pixels between slices for InferenceSlicer.
     """
 
     os.makedirs(output_dir, exist_ok=True)
@@ -158,6 +158,7 @@ def analyze_model_errors_rgbd(
             slice_wh=slicer_slice_wh,
             overlap_ratio_wh=None,
             overlap_wh=slicer_overlap_ratio,
+            iou_threshold=merge_iou,
         )
         print(f"🔄 Using InferenceSlicer with slice_wh={slicer_slice_wh} and overlap_ratio={slicer_overlap_ratio}")
 
@@ -189,7 +190,6 @@ def analyze_model_errors_rgbd(
                 continue
 
             current_h, current_w = initial_h, initial_w
-            depth_map_for_analysis = depth_map_raw
 
             # Prepare the 4-channel input for the model, considering TARGET_WIDTH
             if TARGET_WIDTH:
@@ -873,9 +873,9 @@ def analyze_model_errors_rgbd(
             bar_width = 0.25
             index = np.arange(len(distances))
 
-            bar1 = ax.bar(index - bar_width, tp_dist, bar_width, label='True Positives', color='forestgreen')
-            bar2 = ax.bar(index, fp_dist, bar_width, label='False Positives (Total)', color='salmon')
-            bar3 = ax.bar(index + bar_width, fn_dist, bar_width, label='False Negatives', color='skyblue')
+            ax.bar(index - bar_width, tp_dist, bar_width, label='True Positives', color='forestgreen')
+            ax.bar(index, fp_dist, bar_width, label='False Positives (Total)', color='salmon')
+            ax.bar(index + bar_width, fn_dist, bar_width, label='False Negatives', color='skyblue')
 
             ax.set_xlabel('Distance Bin (meters)')
             ax.set_ylabel('Count')

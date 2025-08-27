@@ -28,7 +28,7 @@ def main():
             cos_lr=True,
             close_mosaic=25,
             amp=True,
-            profile=True,
+            profile=False,
             freeze=0,                     # All layers unfrozen
             multi_scale=True,
             val=True,

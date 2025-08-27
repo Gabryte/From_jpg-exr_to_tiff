@@ -150,32 +150,72 @@ def find_missing_exr_for_jpg(jpg_directory, exr_directory):
 
 
 def check_exr_content(exr_file_path):
+    """
+    Inspects an OpenEXR file to display its header information and attempts
+    to read and analyze a specific channel ('R') if it exists.
 
+    This function serves as a diagnostic tool to verify the contents and
+    structure of an EXR file, including its available channels, data window,
+    compression, and other metadata. It also demonstrates how to extract pixel
+    data from a single channel and convert it into a NumPy array for further
+
+    Args:
+        exr_file_path (str): The file path to the .exr file to be inspected.
+    """
+    # Use a try-except block to gracefully handle potential I/O errors,
+    # such as the file not being found or being improperly formatted.
     try:
+        # Open the specified EXR file in read-only mode.
         file = OpenEXR.InputFile(exr_file_path)
+
+        # Retrieve the file's header, which is a dictionary containing all metadata.
         header = file.header()
+
         print(f"Header for {exr_file_path}:")
+        # Iterate through all key-value pairs in the header and print them for review.
         for key, value in header.items():
+            # The 'channels' value is a dictionary of channel objects.
+            # We print just the channel names (e.g., 'R', 'G', 'B', 'A') for concise output.
             if key == 'channels':
-                print(f"  Channels: {value.keys()}")  # Print just the channel names
+                print(f"  Channels: {list(value.keys())}")
             else:
                 print(f"  {key}: {value}")
 
-        # Example of how to read a specific channel (e.g., 'R')
+        # --- Example: Reading and Analyzing a Specific Channel ---
+        # Check if an 'R' (red) channel exists in the file's channel list.
         if 'R' in header['channels']:
+            # Specify the data type for reading the pixel data (e.g., 32-bit float).
             data_type = Imath.PixelType(Imath.PixelType.FLOAT)
+
+            # Read the raw byte data for the 'R' channel. The result is a byte string.
             r_slice = file.channels('R', data_type)[0]
+
+            # Get the data window from the header, which defines the bounding box of
+            # the pixel data within the image plane.
             dw = header['dataWindow']
+
+            # Calculate the width and height of the image from the data window coordinates.
             size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
+
+            # Convert the raw byte buffer into a 1D NumPy array of 32-bit floats,
+            # then reshape it into a 2D array (height, width) matching the image dimensions.
             r_data = np.frombuffer(r_slice, dtype=np.float32).reshape(size[1], size[0])
+
+            # Print basic statistics (min/max values) of the channel data to confirm
+            # it was read correctly and to understand its value range.
             print(f"\nSuccessfully read 'R' channel. Min value: {r_data.min()}, Max value: {r_data.max()}")
-            # You could also visualize r_data here to confirm it looks like depth
+
+            # Optional: The following commented-out code can be enabled to visualize
+            # the channel data as a grayscale image using matplotlib. This is very
+            # useful for visually inspecting depth maps or other single-channel data.
             # import matplotlib.pyplot as plt
             # plt.imshow(r_data, cmap='gray'); plt.colorbar(); plt.title("R Channel Data"); plt.show()
         else:
-            print("No 'R' channel found.")
+            print("\nNo 'R' channel found in the file.")
 
     except Exception as e:
+        # If any error occurs during the file opening or reading process,
+        # print a descriptive error message to the console.
         print(f"Error inspecting EXR file {exr_file_path}: {e}")
 
 
