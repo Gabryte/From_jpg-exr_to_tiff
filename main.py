@@ -4,7 +4,7 @@ from lib.global_dataset_functions.global_min_max import calculate_log_depth_glob
 from lib.global_dataset_functions.shuffle_and_split import shuffle_frames_randomly, split_and_shuffle_dataset, \
     split_dataset_arbitrary_percentages
 #from lib.fusion_related_functions import convert_from_tiff_multichannel_dataset_to_yolo11_multichannel_dataset, process_and_fuse_all_to_png, \
-#    process_and_fuse_all_to_tiff
+from lib.fusion_related_functions import process_and_fuse_all_to_tiff
 from lib.utility import get_input_directories #, visualize_multichannel_tiff
 from lib.exr_functions import find_missing_exr_for_jpg, check_exr_content, find_correct_exr_and_fix_it
 #from lib.fusion_related_functions import fuse
@@ -20,9 +20,9 @@ if __name__ == '__main__':
 
     #Getting all the different directories of the exported images in jpg and exr files. This process is mandatory in order to get an array of paths, where each of them points to the directory that contains two subfolders: depth and rgb (automatically produced by the Record3D app when exporting in jpg and exr)
 
-    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/florence')
+    #array_of_exr_and_jpg_dirs = get_input_directories('/home/jacobo/Desktop/Video RGB+D Florence/Annotated')
 
-    #find_correct_exr_and_fix_it("/home/jacobo/Downloads/test_set_exported_cvat/images/Test",array_of_exr_and_jpg_dirs,'/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files')
+    #find_correct_exr_and_fix_it("/media/jacobo/Pontifex/expanded_dataset/images/train",array_of_exr_and_jpg_dirs,'/media/jacobo/Pontifex/expanded_dataset/images/fixed_exr_files')
 
     # --- Configuration in order to find eventually missing exr files for rgb images due to iphone 16 export errors ---
     #missing = find_missing_exr_for_jpg("/home/jacobo/Downloads/mines_dataset/images/train",'/home/jacobo/Downloads/mines_dataset/images/fixed_exr_files')
@@ -63,11 +63,11 @@ if __name__ == '__main__':
     #print(f"Starting global depth range calculation on all raw images...")
 
     #all_rgb_files = sorted(
-    #    [f for f in os.listdir('/home/jacobo/Downloads/test_set_exported_cvat/images/Test') if f.lower().endswith(('.jpeg', '.jpg', '.png'))])
+    #    [f for f in os.listdir('/media/jacobo/Pontifex/expanded_dataset/images/train') if f.lower().endswith(('.jpeg', '.jpg', '.png'))])
 
     #global_min_log_depth, global_max_log_depth = calculate_log_depth_global_min_max(
     #    rgb_src_files_list=all_rgb_files,
-    #    depth_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files'
+    #    depth_src_dir='/media/jacobo/Pontifex/expanded_dataset/images/fixed_exr_files'
     #)
 
     #print(f"min: {global_min_log_depth}, max: {global_max_log_depth}")
@@ -77,10 +77,10 @@ if __name__ == '__main__':
 
     # 2.1 Process and Fuse ALL raw RGB/EXR into 4-channel TIFFs <- it works either for the 4 channel training and for the saving of the best.pt in 4 channel format
     #processed_count = process_and_fuse_all_to_tiff(
-    #    rgb_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/Test',
-    #    depth_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files',
-    #    labels_src_dir='/home/jacobo/Downloads/test_set_exported_cvat/labels/Test',
-    #    temp_output_base_dir='/home/jacobo/Downloads/high_res_fused_rgbd_test_images/',
+    #    rgb_src_dir='/media/jacobo/Pontifex/expanded_dataset/images/train',
+    #    depth_src_dir='/media/jacobo/Pontifex/expanded_dataset/images/fixed_exr_files',
+    #    labels_src_dir='/media/jacobo/Pontifex/expanded_dataset/labels/train',
+    #    temp_output_base_dir='/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/',
     #    global_min_log_depth=-0.01998910680413246,
     #    global_max_log_depth=2.505526065826416,
     #    TARGET_WIDTH=1440
@@ -97,20 +97,20 @@ if __name__ == '__main__':
     # Example Usage:
 
     # Define your paths (assuming they exist or the script will create them for non-zero percentages)
-    #train_images_dir = "/home/jacobo/Downloads/advanced_rgbd_dataset/images/train"
-    #train_labels_dir = "/home/jacobo/Downloads/advanced_rgbd_dataset/labels/train"
-    #val_images_dir = "/home/jacobo/Downloads/advanced_rgbd_dataset/images/val"
-    #val_labels_dir = "/home/jacobo/Downloads/advanced_rgbd_dataset/labels/val"
-    #test_images_dir = "/home/jacobo/Downloads/advanced_rgbd_dataset/images/test"
-    #test_labels_dir = "/home/jacobo/Downloads/advanced_rgbd_dataset/labels/test"
+    #train_images_dir = "/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/images/train"
+    #train_labels_dir = "/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/labels/train"
+    #val_images_dir = "/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/images/val"
+    #val_labels_dir = "/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/labels/val"
+    #test_images_dir = "/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/images/test"
+    #test_labels_dir = "/media/jacobo/Pontifex/high_res_expanded_rgbd_test_images/labels/test"
 
     # Example: 80-10-10 split
-    #print("\n--- Running 80-10-10 split ---")
+    #print("\n--- Running 90-10-0 split ---")
     #split_dataset_arbitrary_percentages(
-    #    train_images_dir, train_labels_dir,
-    #    val_images_dir, val_labels_dir,
-    #    test_images_dir, test_labels_dir,
-    #    train_percentage=80, val_percentage=20, test_percentage=0
+        #train_images_dir, train_labels_dir,
+        #val_images_dir, val_labels_dir,
+        #test_images_dir, test_labels_dir,
+        #train_percentage=90, val_percentage=10, test_percentage=0
     #)
 
     # --- Configuration for the shuffling of the test set (use it only if you have prepared the dataset with train val and not test)---
@@ -134,22 +134,26 @@ if __name__ == '__main__':
 
     # --- Configuration for an in-depth model error analysis
     # Define your paths
-    model_path = '/home/jacobo/Downloads/my_yolo_train/hi_res_rgbd_train/weights/best.pt'  # e.g., 'runs/detect/train/weights/best.pt'
+    #model_path = '/home/jacobo/Downloads/my_yolo_train/hi_res_rgbd_train/weights/best.pt'  # e.g., 'runs/detect/train/weights/best.pt'
+    #model_path = '/home/jacobo/Downloads/my_yolo_train/107_epochs_classic_dataset_rgbd_train/weights/best.pt'
+    #model_path = '/home/jacobo/Downloads/my_yolo_train/single_gpu_test_run/weights/best.pt'
+    model_path = '/home/jacobo/Downloads/high_res_rgbd_after_f_16_epochs/weights/best.pt'
     test_images_dir = '/home/jacobo/Downloads/high_res_fused_rgbd_test_images/images/Test'
     test_labels_dir = '/home/jacobo/Downloads/high_res_fused_rgbd_test_images/labels/Test'
     test_depth_dir = '/home/jacobo/Downloads/test_set_exported_cvat/images/fixed_exr_files'  # Directory containing original EXR depth files
-    output_analysis_dir = '/home/jacobo/Downloads/custom_67_epochs_high_res_analysis_results_with_slicer'
+    output_analysis_dir = '/home/jacobo/Downloads/16_epochs_high_res_with_expanded_dataset'
+    #output_analysis_dir = '/home/jacobo/Downloads/200_rgb_epochs_model_iou_50%_conf_5%'
 
     # You MUST provide these from your dataset preprocessing
     # These are the min/max log depths *calculated across your entire training dataset*.
     # If you don't have these, you'll need to compute them first.
     # For example, by iterating through your depth maps during dataset creation.
     # If your depth normalization is different, adjust `normalize_array_to_range` and depth estimation.
-    global_min_log_depth = -0.01998910680413246  # Placeholder, replace with actual value
-    global_max_log_depth = 2.505526065826416  # Placeholder, replace with actual value
+    global_min_log_depth = -0.01998910680413246
+    global_max_log_depth = 2.505526065826416
 
     #TESTING SLICER 3840 X 5120
-    TARGET_WIDTH = 1920
+    TARGET_WIDTH = 1440
 
     analyze_model_errors_rgbd(
         model_path=model_path,
@@ -194,8 +198,10 @@ if __name__ == '__main__':
         global_min_log_depth=global_min_log_depth,
         global_max_log_depth=global_max_log_depth,
         TARGET_WIDTH=TARGET_WIDTH,
-        use_inference_slicer=True,  # New parameter to enable/disable slicer
+        use_inference_slicer=False,  # New parameter to enable/disable slicer
         slicer_slice_wh=(800, 800),  # Default slice size
         slicer_overlap_ratio=(160,160),  # Default overlap ratio
         merge_iou=0.5,
+        rgbd=True,
     )
+

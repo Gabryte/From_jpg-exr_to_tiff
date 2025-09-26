@@ -27,8 +27,9 @@ def analyze_model_errors_rgbd(
         TARGET_WIDTH=640,
         use_inference_slicer=False, # New parameter to enable/disable slicer
         slicer_slice_wh=(640, 640), # Default slice size
-        slicer_overlap_ratio=(15, 15) # Default overlap ratio
-        ,merge_iou=0.5):
+        slicer_overlap_ratio=(15, 15), # Default overlap ratio
+        merge_iou=0.5,
+        rgbd=True):
     """
     Analyzes YOLOv11 RGBD model errors, categorizing detections and visualizing them.
     Includes visualization of ground truth boxes in false positive/negative frames
@@ -246,7 +247,10 @@ def analyze_model_errors_rgbd(
 
             if use_inference_slicer and slicer is not None:
                 # Pass the 4-channel image to the slicer
-                detections_sv = slicer(model_input_image_4ch)
+                if(rgbd):
+                    detections_sv = slicer(model_input_image_4ch)
+                else:
+                    detections_sv = slicer(img_rgb_resized_bgr)
                 # Convert Supervision Detections back to a list of dictionaries for consistent processing
                 for i in range(len(detections_sv.xyxy)):
                     bbox_xyxy = detections_sv.xyxy[i].astype(int).tolist()
@@ -273,7 +277,10 @@ def analyze_model_errors_rgbd(
 
             else:
                 # Original inference logic
-                results = model(model_input_image_4ch, verbose=False, conf=0.0001, iou=0.0001)
+                if(rgbd):
+                    results = model(model_input_image_4ch, verbose=False, conf=0.0001, iou=0.0001)
+                else:
+                    results = model(img_rgb_resized_bgr, verbose=False, conf=0.0001, iou=0.0001)
 
                 if results and results[0].boxes:
                     for box in results[0].boxes:
